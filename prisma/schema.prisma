@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  username     String       @unique
+  passwordHash String
+  role         String       @default("user") // admin | user
+  createdAt    DateTime     @default(now())
+  submissions  Submission[]
+  wrongBooks   WrongBook[]
+  chatHistory  ChatHistory[]
+}
+
+model Problem {
+  id           Int          @id @default(autoincrement())
+  luoguId      String       @unique
+  title        String
+  level        Int          // 1-8 GESP级别
+  description  String
+  inputFormat  String
+  outputFormat String
+  samples      String       // JSON: [{input, output}]
+  testCases    String       // JSON: [{input, output}]
+  submissions  Submission[]
+  wrongBooks   WrongBook[]
+  chatHistory  ChatHistory[]
+}
+
+model Submission {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  problemId  Int
+  code       String
+  language   String   @default("cpp")
+  status     String   // AC, WA, TLE, CE, RE, MLE
+  timeUsed   Int?     // ms
+  memoryUsed Int?     // KB
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  problem    Problem  @relation(fields: [problemId], references: [id])
+}
+
+model WrongBook {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  problemId Int
+  addedAt   DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  problem   Problem  @relation(fields: [problemId], references: [id])
+
+  @@unique([userId, problemId])
+}
+
+model ChatHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  problemId Int
+  role      String   // user | assistant
+  content   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  problem   Problem  @relation(fields: [problemId], references: [id])
+}
+
+model Prompt {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  category  String   // system | hint | error_analysis | step_guide
+  content   String
+  variables String   @default("[]") // JSON: ["problem_title", "user_code", ...]
+  updatedAt DateTime @updatedAt
+}
