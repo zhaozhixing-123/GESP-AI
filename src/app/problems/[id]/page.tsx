@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import Markdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 interface Problem {
   id: number;
@@ -30,6 +34,16 @@ const LEVEL_COLORS: Record<number, string> = {
   7: "bg-red-100 text-red-700",
   8: "bg-red-100 text-red-700",
 };
+
+function MdContent({ children }: { children: string }) {
+  return (
+    <div className="prose prose-sm max-w-none text-gray-700">
+      <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+        {children}
+      </Markdown>
+    </div>
+  );
+}
 
 export default function ProblemDetailPage() {
   const { id } = useParams();
@@ -113,25 +127,19 @@ export default function ProblemDetailPage() {
             {/* 题目描述 */}
             <section className="rounded-lg bg-white p-6 shadow">
               <h2 className="mb-3 text-lg font-semibold text-gray-900">题目描述</h2>
-              <div className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
-                {problem.description}
-              </div>
+              <MdContent>{problem.description}</MdContent>
             </section>
 
             {/* 输入格式 */}
             <section className="rounded-lg bg-white p-6 shadow">
               <h2 className="mb-3 text-lg font-semibold text-gray-900">输入格式</h2>
-              <div className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
-                {problem.inputFormat}
-              </div>
+              <MdContent>{problem.inputFormat}</MdContent>
             </section>
 
             {/* 输出格式 */}
             <section className="rounded-lg bg-white p-6 shadow">
               <h2 className="mb-3 text-lg font-semibold text-gray-900">输出格式</h2>
-              <div className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
-                {problem.outputFormat}
-              </div>
+              <MdContent>{problem.outputFormat}</MdContent>
             </section>
 
             {/* 样例 */}
