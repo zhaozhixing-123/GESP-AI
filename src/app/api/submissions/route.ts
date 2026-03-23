@@ -16,10 +16,10 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "题目ID和代码不能为空" }, { status: 400 });
     }
 
-    // 获取题目样例
+    // 获取题目样例 + 额外测试数据
     const problem = await prisma.problem.findUnique({
       where: { id: parseInt(problemId) },
-      select: { samples: true },
+      select: { samples: true, testCases: true },
     });
 
     if (!problem) {
@@ -29,12 +29,18 @@ export async function POST(request: NextRequest) {
     const samples: Array<{ input: string; output: string }> = JSON.parse(
       problem.samples || "[]"
     );
+    const extraTests: Array<{ input: string; output: string }> = JSON.parse(
+      problem.testCases || "[]"
+    );
 
-    if (samples.length === 0) {
+    // 合并样例 + 额外测试点
+    const allTests = [...samples, ...extraTests];
+
+    if (allTests.length === 0) {
       return Response.json({ error: "该题目暂无测试数据" }, { status: 400 });
     }
 
-    // 对每个样例运行 Judge0
+    // 对每个测试点运行 Judge0
     const results: Array<{
       input: string;
       expectedOutput: string;
@@ -48,7 +54,7 @@ export async function POST(request: NextRequest) {
     let totalTime = 0;
     let maxMemory = 0;
 
-    for (const sample of samples) {
+    for (const sample of allTests) {
       const judge0Result = await judgeCode(code, sample.input);
       const status = mapStatus(judge0Result.status.id);
       const actualOutput = (judge0Result.stdout || "").trim();
