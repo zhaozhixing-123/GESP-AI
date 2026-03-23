@@ -34,3 +34,10 @@ export function getUserFromRequest(request: NextRequest): JwtPayload | null {
   if (!token) return null;
   return verifyToken(token);
 }
+
+export function requireAdmin(request: NextRequest): JwtPayload | Response {
+  const user = getUserFromRequest(request);
+  if (!user) return Response.json({ error: "未登录" }, { status: 401 });
+  if (user.role !== "admin") return Response.json({ error: "无权限" }, { status: 403 });
+  return user;
+}

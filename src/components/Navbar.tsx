@@ -47,12 +47,20 @@ export default function Navbar() {
             错题本
           </Link>
           {user?.role === "admin" && (
-            <Link
-              href="/admin/prompts"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              提示词管理
-            </Link>
+            <>
+              <Link
+                href="/admin/problems"
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                题目管理
+              </Link>
+              <Link
+                href="/admin/prompts"
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                提示词管理
+              </Link>
+            </>
           )}
         </div>
 
