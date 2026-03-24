@@ -54,17 +54,22 @@ export async function POST(request: NextRequest) {
     let totalTime = 0;
     let maxMemory = 0;
 
-    for (const sample of allTests) {
+    for (let idx = 0; idx < allTests.length; idx++) {
+      const sample = allTests[idx];
       const judge0Result = await judgeCode(code, sample.input);
       const status = mapStatus(judge0Result.status.id);
-      const actualOutput = (judge0Result.stdout || "").trim();
-      const expectedOutput = sample.output.trim();
+      // 规范化输出：去除首尾空白和末尾多余换行
+      const actualOutput = (judge0Result.stdout || "").replace(/\s+$/, "");
+      const expectedOutput = sample.output.replace(/\s+$/, "");
 
-      // 如果 Judge0 说 AC 但输出不匹配，标记为 WA
+      // Judge0 的 "Accepted"(id=3) 只表示程序正常运行，不代表答案正确
+      // 必须对比输出来判断 AC/WA
       let finalStatus = status;
-      if (status === "AC" && actualOutput !== expectedOutput) {
-        finalStatus = "WA";
+      if (status === "AC") {
+        finalStatus = actualOutput === expectedOutput ? "AC" : "WA";
       }
+
+      console.log(`[Judge #${idx + 1}] judge0_status=${judge0Result.status.id}, mapped=${status}, final=${finalStatus}, actual="${actualOutput.slice(0, 50)}", expected="${expectedOutput.slice(0, 50)}"`);
 
       results.push({
         input: sample.input,

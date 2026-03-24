@@ -401,8 +401,9 @@ export default function ProblemDetailPage() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-3">
                         <span className={`text-sm font-bold ${
-                          runResult.statusId === 3 ? "text-green-600" :
-                          runResult.statusId === 6 ? "text-yellow-600" : "text-red-600"
+                          runResult.statusId === 6 ? "text-yellow-600" :
+                          (runResult.statusId >= 7 && runResult.statusId <= 14) ? "text-red-600" :
+                          runResult.statusId === 5 ? "text-orange-600" : "text-blue-600"
                         }`}>
                           {runResult.status}
                         </span>
