@@ -1,126 +1,96 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { fetchLuoguProblem, fetchLuoguProblemList } from "@/lib/luogu";
 
-const CN_LEVEL_MAP: Record<string, number> = {
-  "一级": 1, "二级": 2, "三级": 3, "四级": 4,
-  "五级": 5, "六级": 6, "七级": 7, "八级": 8,
-};
-
-function extractLevel(title: string, difficulty: number): number {
-  for (const [key, val] of Object.entries(CN_LEVEL_MAP)) {
-    if (title.includes(key)) return val;
-  }
-  return Math.min(difficulty, 8) || 1;
-}
-
+/** POST /api/admin/import — 单题或批量导入 */
 export async function POST(request: NextRequest) {
   const auth = requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   try {
-    const { luoguId, level: manualLevel } = await request.json();
+    const body = await request.json();
 
-    if (!luoguId) {
-      return Response.json({ error: "请输入洛谷题号" }, { status: 400 });
+    // 批量导入模式：传入 luoguUrl（洛谷列表页链接）
+    if (body.luoguUrl) {
+      return handleBatchImport(body.luoguUrl, body.level);
     }
 
-    // 检查是否已存在
-    const existing = await prisma.problem.findUnique({ where: { luoguId } });
-    if (existing) {
-      return Response.json({ error: `题目 ${luoguId} 已存在（ID: ${existing.id}）` }, { status: 409 });
+    // 单题导入模式：传入 luoguId
+    if (body.luoguId) {
+      return handleSingleImport(body.luoguId.trim().toUpperCase(), body.level);
     }
 
-    // 从洛谷拉取
-    const res = await fetch(`https://www.luogu.com.cn/problem/${luoguId}`, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-    });
-
-    if (!res.ok) {
-      return Response.json({ error: `洛谷请求失败: HTTP ${res.status}` }, { status: 502 });
-    }
-
-    const html = await res.text();
-    const match = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/);
-    if (!match) {
-      return Response.json({ error: "无法解析洛谷页面数据" }, { status: 502 });
-    }
-
-    const data = JSON.parse(match[1]);
-    const raw = data.currentData || data.data || data;
-    const p = raw?.problem;
-
-    if (!p) {
-      return Response.json({ error: "洛谷上找不到该题目" }, { status: 404 });
-    }
-
-    const c = p.content || {};
-    let description: string, inputFormat: string, outputFormat: string;
-
-    let hint = "";
-
-    if (typeof c === "string") {
-      // markdown 格式
-      const sections: Record<string, string> = {};
-      let key = "description";
-      for (const line of c.split("\n")) {
-        const hm = line.match(/^#+\s*(.+)/);
-        if (hm) {
-          const h = hm[1].trim();
-          if (h.includes("题目背景")) key = "background";
-          else if (h.includes("题目描述")) key = "description";
-          else if (h.includes("输入格式")) key = "inputFormat";
-          else if (h.includes("输出格式")) key = "outputFormat";
-          else if (h.includes("样例")) key = "samples_md";
-          else if (h.includes("说明") || h.includes("提示")) key = "hint";
-          else key = h;
-          continue;
-        }
-        sections[key] = (sections[key] || "") + line + "\n";
-      }
-      description = ((sections["background"] || "") + (sections["description"] || "")).trim();
-      inputFormat = (sections["inputFormat"] || "").trim();
-      outputFormat = (sections["outputFormat"] || "").trim();
-      hint = (sections["hint"] || "").trim();
-    } else {
-      // 结构化对象
-      description = ((c.background ? c.background + "\n\n" : "") + (c.description || "")).trim();
-      inputFormat = (c.formatI || "").trim();
-      outputFormat = (c.formatO || "").trim();
-      hint = (c.hint || "").trim();
-    }
-
-    // 将说明/提示追加到描述末尾
-    if (hint) {
-      description = description + "\n\n## 说明/提示\n\n" + hint;
-    }
-
-    const samples = (p.samples || []).map((s: any) => ({
-      input: String(s[0] ?? s.input ?? "").trim(),
-      output: String(s[1] ?? s.output ?? "").trim(),
-    }));
-
-    const level = manualLevel || extractLevel(p.title, p.difficulty);
-
-    const problem = await prisma.problem.create({
-      data: {
-        luoguId: p.pid,
-        title: p.title,
-        level,
-        description: description || "暂无描述",
-        inputFormat: inputFormat || "暂无",
-        outputFormat: outputFormat || "暂无",
-        samples: JSON.stringify(samples),
-        testCases: "[]",
-      },
-    });
-
-    return Response.json({
-      message: "导入成功",
-      problem: { id: problem.id, luoguId: problem.luoguId, title: problem.title, level: problem.level },
-    }, { status: 201 });
+    return Response.json({ error: "请提供 luoguId 或 luoguUrl" }, { status: 400 });
   } catch (e: any) {
     console.error("Import error:", e);
     return Response.json({ error: "导入失败: " + e.message }, { status: 500 });
   }
+}
+
+async function handleSingleImport(luoguId: string, manualLevel?: number) {
+  const existing = await prisma.problem.findUnique({ where: { luoguId } });
+  if (existing) {
+    return Response.json(
+      { error: `题目 ${luoguId} 已存在（ID: ${existing.id}）` },
+      { status: 409 }
+    );
+  }
+
+  const data = await fetchLuoguProblem(luoguId, manualLevel);
+
+  const problem = await prisma.problem.create({ data });
+
+  return Response.json(
+    {
+      message: "导入成功",
+      problem: { id: problem.id, luoguId: problem.luoguId, title: problem.title, level: problem.level },
+    },
+    { status: 201 }
+  );
+}
+
+async function handleBatchImport(luoguUrl: string, manualLevel?: number) {
+  // 从列表页获取所有题号
+  const pids = await fetchLuoguProblemList(luoguUrl);
+
+  if (pids.length === 0) {
+    return Response.json({ error: "该链接没有找到题目" }, { status: 400 });
+  }
+
+  // 查哪些已存在
+  const existing = await prisma.problem.findMany({
+    where: { luoguId: { in: pids } },
+    select: { luoguId: true },
+  });
+  const existingSet = new Set(existing.map((e) => e.luoguId));
+
+  const toImport = pids.filter((pid) => !existingSet.has(pid));
+
+  const results: Array<{ luoguId: string; title: string; id: number; status: "ok" | "error"; error?: string }> = [];
+  const skipped = pids.length - toImport.length;
+
+  for (const pid of toImport) {
+    try {
+      const data = await fetchLuoguProblem(pid, manualLevel);
+      const problem = await prisma.problem.create({ data });
+      results.push({ luoguId: pid, title: problem.title, id: problem.id, status: "ok" });
+    } catch (e: any) {
+      results.push({ luoguId: pid, title: "", id: 0, status: "error", error: e.message });
+    }
+    // 避免请求太快
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  const successCount = results.filter((r) => r.status === "ok").length;
+  const failCount = results.filter((r) => r.status === "error").length;
+
+  return Response.json({
+    message: `批量导入完成：共 ${pids.length} 题，成功 ${successCount}，失败 ${failCount}，跳过已存在 ${skipped}`,
+    total: pids.length,
+    success: successCount,
+    failed: failCount,
+    skipped,
+    results,
+  });
 }
