@@ -126,17 +126,10 @@ async function main() {
   writeFileSync(outPath, JSON.stringify(problemData, null, 2), "utf-8");
   console.log(`\n数据已保存到 ${outPath}`);
 
-  console.log("\n要添加到线上题库，请在浏览器控制台运行：");
-  console.log(`
-fetch('/api/admin/problems', {
-  method: 'POST',
-  headers: {
-    'Authorization': 'Bearer ' + localStorage.getItem('token'),
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify(${JSON.stringify(problemData)})
-}).then(r => r.json()).then(console.log)
-  `.trim());
+  // 生成单行安全的控制台命令（避免换行符粘贴出错）
+  const bodyStr = JSON.stringify(JSON.stringify(problemData));
+  console.log("\n要添加到线上题库，请在浏览器控制台运行以下单行命令：\n");
+  console.log(`fetch("/api/admin/problems",{method:"POST",headers:{"Authorization":"Bearer "+localStorage.getItem("token"),"Content-Type":"application/json"},body:${bodyStr}}).then(r=>r.json()).then(console.log)`);
 }
 
 main().catch((e) => {
