@@ -12,15 +12,18 @@ export function extractLevel(title: string, difficulty: number): number {
   return Math.min(difficulty, 8) || 1;
 }
 
-/** 从洛谷 HTML 中提取 JSON 数据 */
+/** 从洛谷 HTML 中提取 JSON 数据（支持两种嵌入格式） */
 function extractJsonFromHtml(html: string): any {
-  const match = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/);
-  if (!match) {
-    // 记录前200字符帮助诊断
-    console.error("洛谷页面无法解析，HTML前200字:", html.slice(0, 200));
-    throw new Error("无法解析页面数据（洛谷可能返回了验证页面）");
-  }
-  return JSON.parse(match[1]);
+  // 格式1: <script type="application/json">...</script> (题目页、列表页)
+  const match1 = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/);
+  if (match1) return JSON.parse(match1[1]);
+
+  // 格式2: window._feInjection = JSON.parse(decodeURIComponent("...")) (题单页)
+  const match2 = html.match(/decodeURIComponent\("([^"]+)"\)/);
+  if (match2) return JSON.parse(decodeURIComponent(match2[1]));
+
+  console.error("洛谷页面无法解析，HTML前200字:", html.slice(0, 200));
+  throw new Error("无法解析页面数据（洛谷可能返回了验证页面）");
 }
 
 export interface LuoguProblemData {
@@ -107,13 +110,51 @@ export async function fetchLuoguProblem(
 
 /** 构造分页 URL */
 function buildPageUrl(baseUrl: string, page: number): string {
-  const u = new URL(baseUrl);
+  // 去掉 hash (#problems 等)
+  const cleanUrl = baseUrl.split("#")[0];
+  const u = new URL(cleanUrl);
   u.searchParams.set("page", String(page));
   return u.toString();
 }
 
-/** 从洛谷题目列表页拉取所有题号 */
+const LUOGU_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+};
+
+/** 从洛谷题目列表页或题单页拉取所有题号 */
 export async function fetchLuoguProblemList(url: string): Promise<string[]> {
+  const cleanUrl = url.split("#")[0];
+
+  // 判断是题单页还是列表页
+  if (cleanUrl.includes("/training/")) {
+    return fetchTrainingPids(cleanUrl);
+  }
+  return fetchProblemListPids(cleanUrl);
+}
+
+/** 题单页：/training/xxx */
+async function fetchTrainingPids(url: string): Promise<string[]> {
+  console.log(`[洛谷题单] 拉取: ${url}`);
+
+  const res = await fetch(url, { headers: LUOGU_HEADERS });
+  if (!res.ok) throw new Error(`洛谷请求失败: HTTP ${res.status}`);
+
+  const html = await res.text();
+  const data = extractJsonFromHtml(html);
+  const raw = data.currentData || data.data || data;
+  const training = raw?.training;
+
+  if (!training?.problems?.length) {
+    throw new Error("该题单没有找到题目");
+  }
+
+  const pids = training.problems.map((item: any) => item.problem?.pid || item.pid).filter(Boolean);
+  console.log(`[洛谷题单] ${training.title}，共 ${pids.length} 道题`);
+  return pids;
+}
+
+/** 列表页：/problem/list?... */
+async function fetchProblemListPids(url: string): Promise<string[]> {
   const allPids: string[] = [];
   let page = 1;
   let totalPages = 1;
@@ -122,10 +163,7 @@ export async function fetchLuoguProblemList(url: string): Promise<string[]> {
     const pageUrl = buildPageUrl(url, page);
     console.log(`[洛谷列表] 拉取第 ${page} 页: ${pageUrl}`);
 
-    const res = await fetch(pageUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-    });
-
+    const res = await fetch(pageUrl, { headers: LUOGU_HEADERS });
     if (!res.ok) throw new Error(`洛谷请求失败: HTTP ${res.status}`);
 
     const html = await res.text();
