@@ -31,14 +31,28 @@ interface JudgeResult {
   memory: number | null;
 }
 
-interface RunResult {
-  stdout: string;
-  stderr: string;
-  compileOutput: string;
+interface RunSampleResult {
+  input: string;
+  expectedOutput: string;
+  actualOutput: string;
   status: string;
-  statusId: number;
   time: string | null;
   memory: number | null;
+  error: string;
+}
+
+interface RunResult {
+  mode: "samples" | "custom";
+  // samples mode
+  results?: RunSampleResult[];
+  // custom mode
+  stdout?: string;
+  stderr?: string;
+  compileOutput?: string;
+  status?: string;
+  statusId?: number;
+  time?: string | null;
+  memory?: number | null;
 }
 
 interface Submission {
@@ -109,6 +123,7 @@ export default function ProblemDetailPage() {
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState("");
   const [activeTab, setActiveTab] = useState<"run" | "judge">("run");
+  const [showCustomInput, setShowCustomInput] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -146,7 +161,32 @@ export default function ProblemDetailPage() {
     setTimeout(() => setCopied(null), 1500);
   }
 
-  async function handleRun() {
+  async function handleRunSamples() {
+    if (!code.trim() || running) return;
+    setRunning(true);
+    setRunResult(null);
+    setRunError("");
+    setActiveTab("run");
+
+    try {
+      const res = await fetch("/api/run", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ code, problemId: parseInt(id as string) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRunError(data.error || "运行失败");
+      } else {
+        setRunResult(data);
+      }
+    } catch {
+      setRunError("运行失败，请检查网络");
+    }
+    setRunning(false);
+  }
+
+  async function handleRunCustom() {
     if (!code.trim() || running) return;
     setRunning(true);
     setRunResult(null);
@@ -319,11 +359,11 @@ export default function ProblemDetailPage() {
                 <span className="text-sm font-medium text-gray-700">C++ 代码</span>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleRun}
+                    onClick={handleRunSamples}
                     disabled={busy}
-                    className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
                   >
-                    {running ? "运行中..." : "运行"}
+                    {running ? "运行中..." : "运行样例"}
                   </button>
                   <button
                     onClick={handleSubmit}
@@ -337,29 +377,33 @@ export default function ProblemDetailPage() {
               <CodeEditor value={code} onChange={setCode} height="350px" />
             </div>
 
-            {/* 运行输入框 */}
+            {/* 自定义运行 */}
             <div className="rounded-lg bg-white p-4 shadow">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">自定义输入</span>
-                <div className="flex gap-2">
-                  {samples.map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setRunInput(s.input)}
-                      className="rounded border px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-50"
-                    >
-                      样例{samples.length > 1 ? i + 1 : ""}
-                    </button>
-                  ))}
+              <button
+                onClick={() => setShowCustomInput(!showCustomInput)}
+                className="flex w-full items-center justify-between text-sm font-medium text-gray-700"
+              >
+                <span>自定义输入运行</span>
+                <span className="text-xs text-gray-400">{showCustomInput ? "收起" : "展开"}</span>
+              </button>
+              {showCustomInput && (
+                <div className="mt-3">
+                  <textarea
+                    value={runInput}
+                    onChange={(e) => setRunInput(e.target.value)}
+                    className="w-full rounded border p-2 font-mono text-sm"
+                    rows={3}
+                    placeholder="输入测试数据..."
+                  />
+                  <button
+                    onClick={handleRunCustom}
+                    disabled={busy}
+                    className="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {running ? "运行中..." : "运行自定义输入"}
+                  </button>
                 </div>
-              </div>
-              <textarea
-                value={runInput}
-                onChange={(e) => setRunInput(e.target.value)}
-                className="w-full rounded border p-2 font-mono text-sm"
-                rows={3}
-                placeholder="输入测试数据..."
-              />
+              )}
             </div>
 
             {/* 错误提示 */}
@@ -399,49 +443,110 @@ export default function ProblemDetailPage() {
                   {/* 运行结果 */}
                   {activeTab === "run" && runResult && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <span className={`text-sm font-bold ${
-                          runResult.statusId === 6 ? "text-yellow-600" :
-                          (runResult.statusId >= 7 && runResult.statusId <= 14) ? "text-red-600" :
-                          runResult.statusId === 5 ? "text-orange-600" : "text-blue-600"
-                        }`}>
-                          {runResult.status}
-                        </span>
-                        {runResult.time && (
-                          <span className="text-xs text-gray-400">
-                            {(parseFloat(runResult.time) * 1000).toFixed(0)}ms
-                          </span>
-                        )}
-                        {runResult.memory && (
-                          <span className="text-xs text-gray-400">{runResult.memory}KB</span>
-                        )}
-                      </div>
-                      {runResult.compileOutput && (
-                        <div>
-                          <div className="mb-1 text-xs font-medium text-gray-500">编译信息</div>
-                          <pre className="max-h-40 overflow-auto rounded bg-red-50 p-3 text-xs font-mono text-red-700">
-                            {runResult.compileOutput}
-                          </pre>
-                        </div>
+                      {/* 样例运行模式 */}
+                      {runResult.mode === "samples" && runResult.results && (
+                        <>
+                          {(() => {
+                            const allAC = runResult.results.every((r) => r.status === "AC");
+                            return (
+                              <div className="flex items-center gap-3">
+                                <span className={`text-lg font-bold ${allAC ? "text-green-600" : "text-red-600"}`}>
+                                  {allAC ? "样例全部通过" : "样例未通过"}
+                                </span>
+                                <span className="text-sm text-gray-400">
+                                  {runResult.results.filter((r) => r.status === "AC").length}/{runResult.results.length} 通过
+                                </span>
+                              </div>
+                            );
+                          })()}
+                          {runResult.results.map((r, i) => (
+                            <div key={i} className="rounded border p-3">
+                              <div className="mb-2 flex items-center gap-3">
+                                <span className="text-sm font-medium text-gray-500">
+                                  样例 {i + 1}
+                                </span>
+                                <span className={`text-sm font-bold ${STATUS_COLORS[r.status] || "text-gray-600"}`}>
+                                  {STATUS_TEXT[r.status] || r.status}
+                                </span>
+                                {r.time && (
+                                  <span className="text-xs text-gray-400">
+                                    {(parseFloat(r.time) * 1000).toFixed(0)}ms
+                                  </span>
+                                )}
+                                {r.memory && (
+                                  <span className="text-xs text-gray-400">{r.memory}KB</span>
+                                )}
+                              </div>
+                              {r.error && (
+                                <pre className="mb-2 max-h-32 overflow-auto rounded bg-red-50 p-2 text-xs font-mono text-red-700">
+                                  {r.error}
+                                </pre>
+                              )}
+                              {r.status !== "AC" && r.status !== "CE" && (
+                                <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+                                  <div>
+                                    <div className="mb-1 font-medium text-gray-500">期望输出</div>
+                                    <pre className="rounded bg-gray-50 p-2 font-mono">{r.expectedOutput}</pre>
+                                  </div>
+                                  <div>
+                                    <div className="mb-1 font-medium text-gray-500">实际输出</div>
+                                    <pre className="rounded bg-gray-50 p-2 font-mono">{r.actualOutput || "(无输出)"}</pre>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </>
                       )}
-                      {runResult.stdout && (
-                        <div>
-                          <div className="mb-1 text-xs font-medium text-gray-500">标准输出</div>
-                          <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-3 text-sm font-mono text-gray-800">
-                            {runResult.stdout}
-                          </pre>
-                        </div>
-                      )}
-                      {runResult.stderr && (
-                        <div>
-                          <div className="mb-1 text-xs font-medium text-gray-500">标准错误</div>
-                          <pre className="max-h-40 overflow-auto rounded bg-red-50 p-3 text-xs font-mono text-red-700">
-                            {runResult.stderr}
-                          </pre>
-                        </div>
-                      )}
-                      {!runResult.stdout && !runResult.stderr && !runResult.compileOutput && (
-                        <div className="text-sm text-gray-400">（无输出）</div>
+
+                      {/* 自定义输入模式 */}
+                      {runResult.mode === "custom" && (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-sm font-bold ${
+                              runResult.statusId === 6 ? "text-yellow-600" :
+                              (runResult.statusId! >= 7 && runResult.statusId! <= 14) ? "text-red-600" :
+                              runResult.statusId === 5 ? "text-orange-600" : "text-blue-600"
+                            }`}>
+                              {runResult.status}
+                            </span>
+                            {runResult.time && (
+                              <span className="text-xs text-gray-400">
+                                {(parseFloat(runResult.time) * 1000).toFixed(0)}ms
+                              </span>
+                            )}
+                            {runResult.memory && (
+                              <span className="text-xs text-gray-400">{runResult.memory}KB</span>
+                            )}
+                          </div>
+                          {runResult.compileOutput && (
+                            <div>
+                              <div className="mb-1 text-xs font-medium text-gray-500">编译信息</div>
+                              <pre className="max-h-40 overflow-auto rounded bg-red-50 p-3 text-xs font-mono text-red-700">
+                                {runResult.compileOutput}
+                              </pre>
+                            </div>
+                          )}
+                          {runResult.stdout && (
+                            <div>
+                              <div className="mb-1 text-xs font-medium text-gray-500">标准输出</div>
+                              <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-3 text-sm font-mono text-gray-800">
+                                {runResult.stdout}
+                              </pre>
+                            </div>
+                          )}
+                          {runResult.stderr && (
+                            <div>
+                              <div className="mb-1 text-xs font-medium text-gray-500">标准错误</div>
+                              <pre className="max-h-40 overflow-auto rounded bg-red-50 p-3 text-xs font-mono text-red-700">
+                                {runResult.stderr}
+                              </pre>
+                            </div>
+                          )}
+                          {!runResult.stdout && !runResult.stderr && !runResult.compileOutput && (
+                            <div className="text-sm text-gray-400">（无输出）</div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
