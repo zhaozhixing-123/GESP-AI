@@ -49,6 +49,12 @@ export default function Navbar() {
           {user?.role === "admin" && (
             <>
               <Link
+                href="/admin/import"
+                className="text-sm text-gray-600 hover:text-gray-900"
+              >
+                导入题目
+              </Link>
+              <Link
                 href="/admin/problems"
                 className="text-sm text-gray-600 hover:text-gray-900"
               >
