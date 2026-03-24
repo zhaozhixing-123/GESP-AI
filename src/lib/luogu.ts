@@ -15,7 +15,11 @@ export function extractLevel(title: string, difficulty: number): number {
 /** 从洛谷 HTML 中提取 JSON 数据 */
 function extractJsonFromHtml(html: string): any {
   const match = html.match(/<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/);
-  if (!match) throw new Error("无法解析页面数据");
+  if (!match) {
+    // 记录前200字符帮助诊断
+    console.error("洛谷页面无法解析，HTML前200字:", html.slice(0, 200));
+    throw new Error("无法解析页面数据（洛谷可能返回了验证页面）");
+  }
   return JSON.parse(match[1]);
 }
 
@@ -101,55 +105,50 @@ export async function fetchLuoguProblem(
   };
 }
 
+/** 构造分页 URL */
+function buildPageUrl(baseUrl: string, page: number): string {
+  const u = new URL(baseUrl);
+  u.searchParams.set("page", String(page));
+  return u.toString();
+}
+
 /** 从洛谷题目列表页拉取所有题号 */
 export async function fetchLuoguProblemList(url: string): Promise<string[]> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-  });
-
-  if (!res.ok) throw new Error(`洛谷请求失败: HTTP ${res.status}`);
-
-  const html = await res.text();
-  const data = extractJsonFromHtml(html);
-  const raw = data.currentData || data.data || data;
-  const problems = raw?.problems;
-
-  if (!problems?.result?.length) {
-    throw new Error("该页面没有找到题目列表");
-  }
-
   const allPids: string[] = [];
-  const totalPages = Math.ceil(problems.count / problems.perPage);
+  let page = 1;
+  let totalPages = 1;
 
-  // 第一页的结果
-  for (const p of problems.result) {
-    allPids.push(p.pid);
-  }
+  while (page <= totalPages) {
+    const pageUrl = buildPageUrl(url, page);
+    console.log(`[洛谷列表] 拉取第 ${page} 页: ${pageUrl}`);
 
-  // 后续页
-  for (let page = 2; page <= totalPages; page++) {
-    const pageUrl = url.includes("?")
-      ? url.replace(/([?&])page=\d+/, `$1page=${page}`).replace(url, url + `&page=${page}`)
-      : url + `?page=${page}`;
-
-    // 确保 page 参数存在
-    const finalUrl = pageUrl.includes("page=") ? pageUrl : pageUrl + (pageUrl.includes("?") ? "&" : "?") + `page=${page}`;
-
-    const pageRes = await fetch(finalUrl, {
+    const res = await fetch(pageUrl, {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
     });
-    if (!pageRes.ok) break;
 
-    const pageHtml = await pageRes.text();
-    const pageData = extractJsonFromHtml(pageHtml);
-    const pageRaw = pageData.currentData || pageData.data || pageData;
-    const pageProblems = pageRaw?.problems?.result || [];
-    for (const p of pageProblems) {
+    if (!res.ok) throw new Error(`洛谷请求失败: HTTP ${res.status}`);
+
+    const html = await res.text();
+    const data = extractJsonFromHtml(html);
+    const raw = data.currentData || data.data || data;
+    const problems = raw?.problems;
+
+    if (!problems?.result?.length) {
+      if (page === 1) throw new Error("该页面没有找到题目列表");
+      break;
+    }
+
+    for (const p of problems.result) {
       allPids.push(p.pid);
     }
 
-    // 避免请求太快
-    await new Promise((r) => setTimeout(r, 1000));
+    totalPages = Math.ceil(problems.count / problems.perPage);
+    console.log(`[洛谷列表] 第 ${page}/${totalPages} 页，获取 ${problems.result.length} 题，共 ${allPids.length}/${problems.count}`);
+
+    page++;
+    if (page <= totalPages) {
+      await new Promise((r) => setTimeout(r, 2000));
+    }
   }
 
   return allPids;

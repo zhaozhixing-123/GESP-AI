@@ -139,24 +139,69 @@ export default function AdminProblemsPage() {
     e.preventDefault();
     if (!batchUrl.trim() || batchLoading) return;
     setBatchLoading(true);
-    setBatchStatus("正在从洛谷获取题目列表并逐个导入，请耐心等待...");
+    setBatchStatus("正在从洛谷获取题目列表...");
     setBatchResults([]);
     setBatchSummary(null);
+
     try {
-      const res = await fetch("/api/admin/import", {
+      // 1. 获取题号列表
+      const listRes = await fetch("/api/admin/import/list", {
         method: "POST", headers,
-        body: JSON.stringify({ luoguUrl: batchUrl.trim(), level: batchLevel !== "0" ? parseInt(batchLevel) : undefined }),
+        body: JSON.stringify({ luoguUrl: batchUrl.trim() }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        setBatchStatus(data.message);
-        setBatchResults(data.results || []);
-        setBatchSummary({ total: data.total, success: data.success, failed: data.failed, skipped: data.skipped });
-        fetchProblems();
-      } else {
-        setBatchStatus(data.error || "导入失败");
+      const listData = await listRes.json();
+      if (!listRes.ok) {
+        setBatchStatus(listData.error || "获取列表失败");
+        setBatchLoading(false);
+        return;
       }
-    } catch { setBatchStatus("网络错误"); }
+
+      const { toImport, existing, total } = listData;
+      const skipped = existing.length;
+      setBatchStatus(`找到 ${total} 道题，${skipped} 道已存在，开始导入 ${toImport.length} 道...`);
+      setBatchSummary({ total, success: 0, failed: 0, skipped });
+
+      // 2. 逐个导入，实时更新进度
+      let success = 0;
+      let failed = 0;
+      const levelParam = batchLevel !== "0" ? parseInt(batchLevel) : undefined;
+
+      for (let i = 0; i < toImport.length; i++) {
+        const pid = toImport[i];
+        setBatchStatus(`正在导入 ${i + 1}/${toImport.length}: ${pid}...`);
+
+        try {
+          const res = await fetch("/api/admin/import", {
+            method: "POST", headers,
+            body: JSON.stringify({ luoguId: pid, level: levelParam }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            success++;
+            setBatchResults((prev) => [...prev, { luoguId: pid, title: data.problem.title, id: data.problem.id, status: "ok" }]);
+          } else {
+            failed++;
+            setBatchResults((prev) => [...prev, { luoguId: pid, title: "", id: 0, status: "error", error: data.error }]);
+          }
+        } catch {
+          failed++;
+          setBatchResults((prev) => [...prev, { luoguId: pid, title: "", id: 0, status: "error", error: "网络错误" }]);
+        }
+
+        setBatchSummary({ total, success, failed, skipped });
+
+        // 间隔避免限流
+        if (i < toImport.length - 1) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+
+      setBatchSummary({ total, success, failed, skipped });
+      setBatchStatus(`导入完成：成功 ${success}，失败 ${failed}，跳过已存在 ${skipped}`);
+      fetchProblems();
+    } catch (err: any) {
+      setBatchStatus("导入失败: " + (err.message || "未知错误"));
+    }
     setBatchLoading(false);
   }
 

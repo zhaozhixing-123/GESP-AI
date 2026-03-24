@@ -70,16 +70,21 @@ async function handleBatchImport(luoguUrl: string, manualLevel?: number) {
   const results: Array<{ luoguId: string; title: string; id: number; status: "ok" | "error"; error?: string }> = [];
   const skipped = pids.length - toImport.length;
 
-  for (const pid of toImport) {
+  for (let i = 0; i < toImport.length; i++) {
+    const pid = toImport[i];
+    console.log(`[批量导入] ${i + 1}/${toImport.length}: ${pid}`);
     try {
       const data = await fetchLuoguProblem(pid, manualLevel);
       const problem = await prisma.problem.create({ data });
       results.push({ luoguId: pid, title: problem.title, id: problem.id, status: "ok" });
     } catch (e: any) {
+      console.error(`[批量导入] ${pid} 失败:`, e.message);
       results.push({ luoguId: pid, title: "", id: 0, status: "error", error: e.message });
     }
-    // 避免请求太快
-    await new Promise((r) => setTimeout(r, 1500));
+    // 避免洛谷限流
+    if (i < toImport.length - 1) {
+      await new Promise((r) => setTimeout(r, 2500));
+    }
   }
 
   const successCount = results.filter((r) => r.status === "ok").length;
