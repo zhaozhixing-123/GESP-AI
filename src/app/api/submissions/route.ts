@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { judgeCode, mapStatus } from "@/lib/judge0";
+import { judgeCode, mapStatus, getErrorMessage } from "@/lib/judge0";
 
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
@@ -57,19 +57,15 @@ export async function POST(request: NextRequest) {
     for (let idx = 0; idx < allTests.length; idx++) {
       const sample = allTests[idx];
       const judge0Result = await judgeCode(code, sample.input);
-      const status = mapStatus(judge0Result.status.id);
-      // 规范化输出：去除首尾空白和末尾多余换行
+      const status = mapStatus(judge0Result);
       const actualOutput = (judge0Result.stdout || "").replace(/\s+$/, "");
       const expectedOutput = sample.output.replace(/\s+$/, "");
 
-      // Judge0 的 "Accepted"(id=3) 只表示程序正常运行，不代表答案正确
-      // 必须对比输出来判断 AC/WA
+      // Judge0 "AC" 只表示程序正常运行，需要对比输出判断真正的 AC/WA
       let finalStatus = status;
       if (status === "AC") {
         finalStatus = actualOutput === expectedOutput ? "AC" : "WA";
       }
-
-      console.log(`[Judge #${idx + 1}] judge0_status=${judge0Result.status.id}, mapped=${status}, final=${finalStatus}, actual="${actualOutput.slice(0, 50)}", expected="${expectedOutput.slice(0, 50)}"`);
 
       results.push({
         input: sample.input,
@@ -88,14 +84,9 @@ export async function POST(request: NextRequest) {
         overallStatus = finalStatus;
       }
 
-      // CE 或 RE 不需要继续测试
-      if (finalStatus === "CE" || finalStatus === "RE") {
-        // 附加编译错误信息
-        if (judge0Result.compile_output) {
-          results[results.length - 1].actualOutput = judge0Result.compile_output;
-        } else if (judge0Result.stderr) {
-          results[results.length - 1].actualOutput = judge0Result.stderr;
-        }
+      // CE 不需要继续测试
+      if (finalStatus === "CE") {
+        results[results.length - 1].actualOutput = getErrorMessage(judge0Result);
         break;
       }
     }
