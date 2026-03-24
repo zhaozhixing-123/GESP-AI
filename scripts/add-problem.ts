@@ -136,7 +136,7 @@ async function fetchProblem(problemId: string) {
   }
 
   const c = p.content || {};
-  let description: string, inputFormat: string, outputFormat: string;
+  let description: string, inputFormat: string, outputFormat: string, hint: string;
 
   if (typeof c === "string") {
     const sections: Record<string, string> = {};
@@ -159,10 +159,17 @@ async function fetchProblem(problemId: string) {
     description = ((sections["background"] || "") + (sections["description"] || "")).trim();
     inputFormat = (sections["inputFormat"] || "").trim();
     outputFormat = (sections["outputFormat"] || "").trim();
+    hint = (sections["hint"] || "").trim();
   } else {
     description = ((c.background ? c.background + "\n\n" : "") + (c.description || "")).trim();
     inputFormat = (c.formatI || "").trim();
     outputFormat = (c.formatO || "").trim();
+    hint = (c.hint || "").trim();
+  }
+
+  // 将说明/提示追加到描述
+  if (hint) {
+    description = description + "\n\n## 说明/提示\n\n" + hint;
   }
 
   const samples = (p.samples || []).map((s: any) => ({

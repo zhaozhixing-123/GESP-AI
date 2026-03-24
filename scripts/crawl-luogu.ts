@@ -130,14 +130,27 @@ async function main() {
       const problem = raw?.problem;
       const content = problem?.content ?? "";
 
-      // 解析 markdown 内容
-      const parsed = typeof content === "string"
-        ? parseMarkdownContent(content)
-        : {
-            description: content?.description || "",
-            inputFormat: content?.formatI || "",
-            outputFormat: content?.formatO || "",
-          };
+      // 解析内容
+      let parsed: { description: string; inputFormat: string; outputFormat: string };
+      let hint = "";
+
+      if (typeof content === "string") {
+        const md = parseMarkdownContent(content);
+        parsed = md;
+      } else {
+        parsed = {
+          description: content?.description || "",
+          inputFormat: content?.formatI || "",
+          outputFormat: content?.formatO || "",
+        };
+        hint = content?.hint || "";
+      }
+
+      // 将说明/提示追加到描述
+      let fullDescription = (parsed.description || "").trim();
+      if (hint) {
+        fullDescription += "\n\n## 说明/提示\n\n" + hint.trim();
+      }
 
       // 获取样例
       let samples: Array<{ input: string; output: string }> = [];
@@ -153,7 +166,7 @@ async function main() {
         luoguId: item.pid,
         title: item.title,
         level: extractLevel(item.title, item.difficulty),
-        description: parsed.description || "暂无描述",
+        description: fullDescription || "暂无描述",
         inputFormat: parsed.inputFormat || "暂无",
         outputFormat: parsed.outputFormat || "暂无",
         samples: JSON.stringify(samples),

@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
     const c = p.content || {};
     let description: string, inputFormat: string, outputFormat: string;
 
+    let hint = "";
+
     if (typeof c === "string") {
       // markdown 格式
       const sections: Record<string, string> = {};
@@ -79,11 +81,18 @@ export async function POST(request: NextRequest) {
       description = ((sections["background"] || "") + (sections["description"] || "")).trim();
       inputFormat = (sections["inputFormat"] || "").trim();
       outputFormat = (sections["outputFormat"] || "").trim();
+      hint = (sections["hint"] || "").trim();
     } else {
       // 结构化对象
       description = ((c.background ? c.background + "\n\n" : "") + (c.description || "")).trim();
       inputFormat = (c.formatI || "").trim();
       outputFormat = (c.formatO || "").trim();
+      hint = (c.hint || "").trim();
+    }
+
+    // 将说明/提示追加到描述末尾
+    if (hint) {
+      description = description + "\n\n## 说明/提示\n\n" + hint;
     }
 
     const samples = (p.samples || []).map((s: any) => ({
