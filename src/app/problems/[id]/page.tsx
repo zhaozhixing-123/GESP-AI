@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import CodeEditor, { DEFAULT_CODE } from "@/components/CodeEditor";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
@@ -94,8 +95,8 @@ const STATUS_TEXT: Record<string, string> = {
 
 function MdContent({ children }: { children: string }) {
   return (
-    <div className="prose prose-sm max-w-none text-gray-700">
-      <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+    <div className="prose prose-sm max-w-none text-gray-700 prose-table:border-collapse prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-1.5 prose-th:bg-gray-50 prose-td:border prose-td:border-gray-300 prose-td:px-3 prose-td:py-1.5">
+      <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
         {children}
       </Markdown>
     </div>
