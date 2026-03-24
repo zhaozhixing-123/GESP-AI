@@ -103,18 +103,39 @@ export default function AdminProblemsPage() {
     fetchProblems();
   }
 
+  async function handleClearAll() {
+    if (!confirm("确定清空所有题目？此操作会同时删除所有提交记录、错题本和聊天记录，不可恢复！")) return;
+    if (!confirm("再次确认：真的要删除全部题目吗？")) return;
+    const res = await fetch("/api/admin/problems/clear", { method: "DELETE", headers });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message);
+      fetchProblems();
+    } else {
+      alert(data.error || "清空失败");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">题目管理</h1>
-          <button
-            onClick={openNew}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            添加题目
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleClearAll}
+              className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              清空所有题目
+            </button>
+            <button
+              onClick={openNew}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              添加题目
+            </button>
+          </div>
         </div>
 
         {/* 表单弹窗 */}
