@@ -113,7 +113,7 @@ export default function AdminProblemsPage() {
       const res = await fetch(`/api/admin/problems/${id}/generate`, { method: "POST", headers });
       const data = await res.json();
       if (res.ok) {
-        setGenMsg(`${data.message}`);
+        setGenMsg(`${data.message}（by ${data.model}）`);
       } else {
         setGenMsg(`失败: ${data.error}`);
       }

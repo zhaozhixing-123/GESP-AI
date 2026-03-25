@@ -3,6 +3,9 @@ import { judgeCode } from "./judge0";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+export const TESTGEN_MODEL = "claude-sonnet-4-20250514";
+export const TESTGEN_MODEL_DISPLAY = "Claude Sonnet 4";
+
 interface Problem {
   title: string;
   description: string;
@@ -66,7 +69,7 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}
 - 不要在 JSON 之外输出任何文字`;
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: TESTGEN_MODEL,
     max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });

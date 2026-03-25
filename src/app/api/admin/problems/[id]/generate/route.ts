@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
-import { generateTestCases } from "@/lib/testgen";
+import { generateTestCases, TESTGEN_MODEL_DISPLAY } from "@/lib/testgen";
 
 export async function POST(
   request: NextRequest,
@@ -41,6 +41,7 @@ export async function POST(
     return Response.json({
       message: `成功生成 ${testCases.length} 个测试点`,
       count: testCases.length,
+      model: TESTGEN_MODEL_DISPLAY,
     });
   } catch (e: any) {
     console.error("Generate testcases error:", e);
