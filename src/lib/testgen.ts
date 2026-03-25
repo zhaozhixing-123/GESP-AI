@@ -79,12 +79,14 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}
 - inputs 中每组输入是一个字符串，换行用 \\n 表示
 - 不要在 JSON 之外输出任何文字`;
 
+  console.log(`[TestGen] 调用模型: ${TESTGEN_MODEL}`);
   const response = await client.messages.create({
     model: TESTGEN_MODEL,
     max_tokens: 12000,
     messages: [{ role: "user", content: prompt }],
   });
 
+  console.log(`[TestGen] API 返回模型: ${response.model}, usage: ${JSON.stringify(response.usage)}`);
   const text = response.content
     .filter((c) => c.type === "text")
     .map((c) => c.text)

@@ -123,6 +123,7 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
   ];
 
   // 调用 Claude API（流式）
+  console.log(`[AITeacher] 调用模型: ${AI_TEACHER_MODEL}`);
   const stream = await client.messages.stream({
     model: AI_TEACHER_MODEL,
     max_tokens: 2000,
