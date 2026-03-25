@@ -8,6 +8,7 @@ interface Problem {
   luoguId: string;
   title: string;
   level: number;
+  testCases?: string;
 }
 
 interface ImportResult {
@@ -134,6 +135,7 @@ export default function AdminProblemsPage() {
       const data = await res.json();
       if (res.ok) {
         setGenMsg(`${data.message}（by ${data.model}）`);
+        fetchProblems(); // 刷新列表以更新测试数据状态
       } else {
         setGenMsg(`失败: ${data.error}`);
       }
@@ -144,20 +146,36 @@ export default function AdminProblemsPage() {
     setTimeout(() => setGenMsg(""), 8000);
   }
 
+  function getTestCaseCount(p: Problem): number {
+    try { return JSON.parse(p.testCases || "[]").length; } catch { return 0; }
+  }
+
   async function handleBatchGenerate() {
     if (batchGenRunning || generating) return;
     const level = parseInt(batchGenLevel);
-    const targets = level > 0
+    const allTargets = level > 0
       ? problems.filter((p) => p.level === level)
       : problems;
-    if (targets.length === 0) {
+
+    // 跳过已有测试数据的题目
+    const targets = allTargets.filter((p) => getTestCaseCount(p) === 0);
+    const skipped = allTargets.length - targets.length;
+
+    if (allTargets.length === 0) {
       setBatchGenProgress("没有找到符合条件的题目");
       return;
     }
-    if (!confirm(`确定要为 ${targets.length} 道${level > 0 ? ` ${level}级` : ""}题目生成测试数据？每道题约需2-3分钟。`)) return;
+    if (targets.length === 0) {
+      setBatchGenProgress(`该级别 ${allTargets.length} 道题全部已有测试数据，无需生成`);
+      return;
+    }
+    if (!confirm(`${allTargets.length} 道题中 ${skipped} 道已有测试数据将跳过，为剩余 ${targets.length} 道生成？每道约需2-3分钟。`)) return;
 
     setBatchGenRunning(true);
     setBatchGenResults([]);
+    if (skipped > 0) {
+      setBatchGenResults([{ title: `${skipped} 道题已有测试数据`, ok: true, msg: "跳过" }]);
+    }
     let success = 0;
     let failed = 0;
 
@@ -184,8 +202,9 @@ export default function AdminProblemsPage() {
       setGenerating(null);
     }
 
-    setBatchGenProgress(`批量生成完成：成功 ${success}，失败 ${failed}`);
+    setBatchGenProgress(`批量生成完成：成功 ${success}，失败 ${failed}，跳过 ${skipped}`);
     setBatchGenRunning(false);
+    fetchProblems();
   }
 
   async function handleClearAll() {
@@ -606,6 +625,7 @@ export default function AdminProblemsPage() {
                       <th className="px-4 py-3 font-medium">洛谷ID</th>
                       <th className="px-4 py-3 font-medium">标题</th>
                       <th className="px-4 py-3 font-medium">级别</th>
+                      <th className="px-4 py-3 font-medium">测试点</th>
                       <th className="px-4 py-3 font-medium">操作</th>
                     </tr>
                   </thead>
@@ -615,6 +635,14 @@ export default function AdminProblemsPage() {
                         <td className="px-4 py-3 text-sm font-mono text-gray-500">{p.luoguId}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{p.title}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{p.level}级</td>
+                        <td className="px-4 py-3 text-sm">
+                          {(() => {
+                            const count = getTestCaseCount(p);
+                            return count > 0
+                              ? <span className="text-green-600">{count}</span>
+                              : <span className="text-gray-300">0</span>;
+                          })()}
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           <button
                             onClick={() => handleGenerate(p.id)}
