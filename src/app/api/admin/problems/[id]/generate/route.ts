@@ -39,7 +39,7 @@ export async function POST(
     });
 
     return Response.json({
-      message: `成功生成 ${testCases.length} 个测试点`,
+      message: `成功生成 ${testCases.length} 个测试点（双解法交叉验证通过）`,
       count: testCases.length,
       model: TESTGEN_MODEL_DISPLAY,
     });
