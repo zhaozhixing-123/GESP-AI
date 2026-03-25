@@ -52,6 +52,9 @@ export default function AdminProblemsPage() {
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
   // --- 题目列表逻辑 ---
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterLevel, setFilterLevel] = useState("0");
+
   async function fetchProblems() {
     setLoading(true);
     const res = await fetch("/api/admin/problems", { headers });
@@ -63,6 +66,19 @@ export default function AdminProblemsPage() {
   }
 
   useEffect(() => { fetchProblems(); }, []);
+
+  // 前端过滤 + 按级别排序
+  const filteredProblems = problems
+    .filter((p) => {
+      const lvl = parseInt(filterLevel);
+      if (lvl > 0 && p.level !== lvl) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return p.title.toLowerCase().includes(q) || p.luoguId.toLowerCase().includes(q);
+      }
+      return true;
+    })
+    .sort((a, b) => a.level - b.level || a.luoguId.localeCompare(b.luoguId));
 
   function openNew() {
     setEditing(null);
@@ -381,9 +397,26 @@ export default function AdminProblemsPage() {
         {/* ===== 题目列表 ===== */}
         {tab === "list" && (
           <>
-            <div className="mb-4 flex items-center justify-between">
-              <span className="text-sm text-gray-500">共 {problems.length} 道题</span>
-              <div className="flex gap-2">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索题号或标题..."
+                className="flex-1 min-w-[200px] rounded-md border px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <select
+                value={filterLevel}
+                onChange={(e) => setFilterLevel(e.target.value)}
+                className="rounded-md border px-3 py-1.5 text-sm"
+              >
+                <option value="0">全部级别</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((l) => (
+                  <option key={l} value={l}>{l}级</option>
+                ))}
+              </select>
+              <span className="text-sm text-gray-400">{filteredProblems.length}/{problems.length} 题</span>
+              <div className="flex gap-2 ml-auto">
                 <button onClick={handleClearAll}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
                   清空全部
@@ -577,7 +610,7 @@ export default function AdminProblemsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {problems.map((p) => (
+                    {filteredProblems.map((p) => (
                       <tr key={p.id} className="border-b last:border-b-0">
                         <td className="px-4 py-3 text-sm font-mono text-gray-500">{p.luoguId}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{p.title}</td>
