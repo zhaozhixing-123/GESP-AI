@@ -208,7 +208,7 @@ export default function AdminProblemsPage() {
   async function handleVerify(id: number) {
     if (verifying || batchVerifyRunning || generating || batchGenRunning) return;
     setVerifying(id);
-    setVerifyMsg("正在用 Opus 复核测试数据...");
+    setVerifyMsg("正在用 批量复核测试用例...");
     try {
       const res = await fetch(`/api/admin/problems/${id}/verify`, { method: "POST", headers });
       const data = await res.json();
@@ -428,10 +428,10 @@ export default function AdminProblemsPage() {
               </div>
             </div>
 
-            {/* 批量生成测试数据 */}
+            {/* 批量生成测试用例 */}
             <div className="mb-4 rounded-lg bg-white p-4 shadow">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-gray-700">批量生成测试数据</span>
+                <span className="text-sm font-medium text-gray-700">批量生成测试用例</span>
                 <select
                   value={batchGenLevel}
                   onChange={(e) => setBatchGenLevel(e.target.value)}
@@ -475,7 +475,7 @@ export default function AdminProblemsPage() {
             {/* 批量复核测试数据 */}
             <div className="mb-4 rounded-lg bg-white p-4 shadow">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-gray-700">Opus 复核测试数据</span>
+                <span className="text-sm font-medium text-gray-700">批量复核测试用例</span>
                 <select
                   value={batchVerifyLevel}
                   onChange={(e) => setBatchVerifyLevel(e.target.value)}
@@ -495,7 +495,7 @@ export default function AdminProblemsPage() {
                   {batchVerifyRunning ? "复核中..." : "开始复核"}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-gray-400">用 Opus 4 独立写解法跑所有测试点，不一致的自动移除</p>
+              <p className="mt-1 text-xs text-gray-400">用 Opus 4.6 独立写解法跑所有测试点，不一致的自动移除</p>
 
               {batchVerifyProgress && (
                 <div className={`mt-3 text-sm ${batchVerifyRunning ? "text-yellow-700" : batchVerifyProgress.includes("问题") ? "text-orange-600" : "text-purple-700"}`}>
