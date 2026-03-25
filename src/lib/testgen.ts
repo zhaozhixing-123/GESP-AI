@@ -3,8 +3,8 @@ import { judgeCode } from "./judge0";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export const TESTGEN_MODEL = "claude-sonnet-4-20250514";
-export const TESTGEN_MODEL_DISPLAY = "Claude Sonnet 4";
+export const TESTGEN_MODEL = "claude-sonnet-4-6";
+export const TESTGEN_MODEL_DISPLAY = "Claude Sonnet 4.6";
 
 interface Problem {
   title: string;

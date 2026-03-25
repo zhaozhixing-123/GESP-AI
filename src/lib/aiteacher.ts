@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export const AI_TEACHER_MODEL = "claude-opus-4-20250514";
+export const AI_TEACHER_MODEL = "claude-opus-4-6";
 export const AI_TEACHER_MODEL_DISPLAY = "Claude Opus 4.6";
 
 const DEFAULT_SYSTEM_PROMPT = `你是GESP.AI的AI编程老师，帮助学生学习C++和GESP考试。
