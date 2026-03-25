@@ -101,6 +101,29 @@ export default function AdminProblemsPage() {
     fetchProblems();
   }
 
+  // --- 生成测试数据 ---
+  const [generating, setGenerating] = useState<number | null>(null);
+  const [genMsg, setGenMsg] = useState("");
+
+  async function handleGenerate(id: number) {
+    if (generating) return;
+    setGenerating(id);
+    setGenMsg("正在生成测试数据（约1-2分钟）...");
+    try {
+      const res = await fetch(`/api/admin/problems/${id}/generate`, { method: "POST", headers });
+      const data = await res.json();
+      if (res.ok) {
+        setGenMsg(`${data.message}`);
+      } else {
+        setGenMsg(`失败: ${data.error}`);
+      }
+    } catch {
+      setGenMsg("网络错误");
+    }
+    setGenerating(null);
+    setTimeout(() => setGenMsg(""), 5000);
+  }
+
   async function handleClearAll() {
     if (!confirm("确定清空所有题目？此操作会同时删除所有提交记录、错题本和聊天记录，不可恢复！")) return;
     if (!confirm("再次确认：真的要删除全部题目吗？")) return;
@@ -313,6 +336,12 @@ export default function AdminProblemsPage() {
               </div>
             )}
 
+            {genMsg && (
+              <div className={`mb-4 rounded-lg p-3 text-sm ${genMsg.includes("失败") || genMsg.includes("错误") ? "bg-red-50 text-red-600" : generating ? "bg-yellow-50 text-yellow-700" : "bg-green-50 text-green-700"}`}>
+                {genMsg}
+              </div>
+            )}
+
             {loading ? (
               <div className="py-12 text-center text-gray-500">加载中...</div>
             ) : problems.length === 0 ? (
@@ -335,6 +364,13 @@ export default function AdminProblemsPage() {
                         <td className="px-4 py-3 text-sm text-gray-900">{p.title}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{p.level}级</td>
                         <td className="px-4 py-3 text-sm">
+                          <button
+                            onClick={() => handleGenerate(p.id)}
+                            disabled={generating !== null}
+                            className="mr-2 text-green-600 hover:underline disabled:opacity-50"
+                          >
+                            {generating === p.id ? "生成中..." : "生成测试"}
+                          </button>
                           <button onClick={() => openEdit(p.id)} className="mr-2 text-blue-600 hover:underline">编辑</button>
                           <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">删除</button>
                         </td>
