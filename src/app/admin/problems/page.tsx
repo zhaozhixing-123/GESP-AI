@@ -181,6 +181,82 @@ export default function AdminProblemsPage() {
     else { alert(data.error || "清空失败"); }
   }
 
+  // --- 复核测试数据 ---
+  const [verifying, setVerifying] = useState<number | null>(null);
+  const [verifyMsg, setVerifyMsg] = useState("");
+  const [batchVerifyLevel, setBatchVerifyLevel] = useState("0");
+  const [batchVerifyRunning, setBatchVerifyRunning] = useState(false);
+  const [batchVerifyProgress, setBatchVerifyProgress] = useState("");
+  const [batchVerifyResults, setBatchVerifyResults] = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
+
+  async function handleVerify(id: number) {
+    if (verifying || batchVerifyRunning || generating || batchGenRunning) return;
+    setVerifying(id);
+    setVerifyMsg("正在用 Opus 复核测试数据...");
+    try {
+      const res = await fetch(`/api/admin/problems/${id}/verify`, { method: "POST", headers });
+      const data = await res.json();
+      if (res.ok) {
+        setVerifyMsg(`${data.message}（by ${data.model}）`);
+      } else {
+        setVerifyMsg(`失败: ${data.error}`);
+      }
+    } catch {
+      setVerifyMsg("网络错误");
+    }
+    setVerifying(null);
+    setTimeout(() => setVerifyMsg(""), 8000);
+  }
+
+  async function handleBatchVerify() {
+    if (batchVerifyRunning || verifying || generating || batchGenRunning) return;
+    const level = parseInt(batchVerifyLevel);
+    const targets = level > 0
+      ? problems.filter((p) => p.level === level)
+      : problems;
+    if (targets.length === 0) {
+      setBatchVerifyProgress("没有找到符合条件的题目");
+      return;
+    }
+    if (!confirm(`确定要用 Opus 复核 ${targets.length} 道${level > 0 ? ` ${level}级` : ""}题目的测试数据？每道题约需2-3分钟。`)) return;
+
+    setBatchVerifyRunning(true);
+    setBatchVerifyResults([]);
+    let ok = 0;
+    let bad = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      setBatchVerifyProgress(`正在复核 ${i + 1}/${targets.length}: ${p.title}...`);
+      setVerifying(p.id);
+
+      try {
+        const res = await fetch(`/api/admin/problems/${p.id}/verify`, { method: "POST", headers });
+        const data = await res.json();
+        if (res.ok) {
+          const hasIssue = data.failed > 0;
+          if (hasIssue) bad++; else ok++;
+          setBatchVerifyResults((prev) => [...prev, {
+            title: p.title,
+            ok: !hasIssue,
+            msg: hasIssue ? `${data.failed} 个不一致已移除，剩余 ${data.remaining}` : `全部 ${data.total} 个通过`,
+          }]);
+        } else {
+          bad++;
+          setBatchVerifyResults((prev) => [...prev, { title: p.title, ok: false, msg: data.error }]);
+        }
+      } catch {
+        bad++;
+        setBatchVerifyResults((prev) => [...prev, { title: p.title, ok: false, msg: "网络错误" }]);
+      }
+
+      setVerifying(null);
+    }
+
+    setBatchVerifyProgress(`复核完成：${ok} 题全通过，${bad} 题有问题（已自动清理）`);
+    setBatchVerifyRunning(false);
+  }
+
   // --- 单题导入逻辑 ---
   async function handleSingleImport(e: React.FormEvent) {
     e.preventDefault();
@@ -363,6 +439,51 @@ export default function AdminProblemsPage() {
               )}
             </div>
 
+            {/* 批量复核测试数据 */}
+            <div className="mb-4 rounded-lg bg-white p-4 shadow">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">Opus 复核测试数据</span>
+                <select
+                  value={batchVerifyLevel}
+                  onChange={(e) => setBatchVerifyLevel(e.target.value)}
+                  className="rounded-md border px-3 py-1.5 text-sm"
+                  disabled={batchVerifyRunning}
+                >
+                  <option value="0">全部级别</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((l) => (
+                    <option key={l} value={l}>{l}级（{problems.filter((p) => p.level === l).length} 题）</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBatchVerify}
+                  disabled={batchVerifyRunning || batchGenRunning || generating !== null || verifying !== null}
+                  className="rounded-md bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {batchVerifyRunning ? "复核中..." : "开始复核"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">用 Opus 4 独立写解法跑所有测试点，不一致的自动移除</p>
+
+              {batchVerifyProgress && (
+                <div className={`mt-3 text-sm ${batchVerifyRunning ? "text-yellow-700" : batchVerifyProgress.includes("问题") ? "text-orange-600" : "text-purple-700"}`}>
+                  {batchVerifyProgress}
+                </div>
+              )}
+
+              {batchVerifyResults.length > 0 && (
+                <div className="mt-3 max-h-48 space-y-1 overflow-auto">
+                  {batchVerifyResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate text-gray-700">{r.title}</span>
+                      <span className={r.ok ? "text-purple-600" : "text-orange-600"}>
+                        {r.msg}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {showForm && (
               <div className="mb-6 rounded-lg bg-white p-6 shadow">
                 <h2 className="mb-4 text-lg font-semibold">{editing ? "编辑题目" : "手动添加题目"}</h2>
@@ -434,6 +555,12 @@ export default function AdminProblemsPage() {
               </div>
             )}
 
+            {verifyMsg && (
+              <div className={`mb-4 rounded-lg p-3 text-sm ${verifyMsg.includes("失败") || verifyMsg.includes("错误") ? "bg-red-50 text-red-600" : verifying ? "bg-yellow-50 text-yellow-700" : "bg-purple-50 text-purple-700"}`}>
+                {verifyMsg}
+              </div>
+            )}
+
             {loading ? (
               <div className="py-12 text-center text-gray-500">加载中...</div>
             ) : problems.length === 0 ? (
@@ -458,10 +585,17 @@ export default function AdminProblemsPage() {
                         <td className="px-4 py-3 text-sm">
                           <button
                             onClick={() => handleGenerate(p.id)}
-                            disabled={generating !== null}
+                            disabled={generating !== null || batchGenRunning || batchVerifyRunning}
                             className="mr-2 text-green-600 hover:underline disabled:opacity-50"
                           >
-                            {generating === p.id ? "生成中..." : "生成测试"}
+                            {generating === p.id ? "生成中..." : "生成"}
+                          </button>
+                          <button
+                            onClick={() => handleVerify(p.id)}
+                            disabled={verifying !== null || batchGenRunning || batchVerifyRunning}
+                            className="mr-2 text-purple-600 hover:underline disabled:opacity-50"
+                          >
+                            {verifying === p.id ? "复核中..." : "复核"}
                           </button>
                           <button onClick={() => openEdit(p.id)} className="mr-2 text-blue-600 hover:underline">编辑</button>
                           <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">删除</button>
