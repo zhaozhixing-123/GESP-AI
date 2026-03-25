@@ -104,11 +104,15 @@ export default function AdminProblemsPage() {
   // --- 生成测试数据 ---
   const [generating, setGenerating] = useState<number | null>(null);
   const [genMsg, setGenMsg] = useState("");
+  const [batchGenLevel, setBatchGenLevel] = useState("0");
+  const [batchGenRunning, setBatchGenRunning] = useState(false);
+  const [batchGenProgress, setBatchGenProgress] = useState("");
+  const [batchGenResults, setBatchGenResults] = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
 
   async function handleGenerate(id: number) {
-    if (generating) return;
+    if (generating || batchGenRunning) return;
     setGenerating(id);
-    setGenMsg("正在生成测试数据（约1-2分钟）...");
+    setGenMsg("正在生成测试数据（约2-3分钟）...");
     try {
       const res = await fetch(`/api/admin/problems/${id}/generate`, { method: "POST", headers });
       const data = await res.json();
@@ -121,7 +125,51 @@ export default function AdminProblemsPage() {
       setGenMsg("网络错误");
     }
     setGenerating(null);
-    setTimeout(() => setGenMsg(""), 5000);
+    setTimeout(() => setGenMsg(""), 8000);
+  }
+
+  async function handleBatchGenerate() {
+    if (batchGenRunning || generating) return;
+    const level = parseInt(batchGenLevel);
+    const targets = level > 0
+      ? problems.filter((p) => p.level === level)
+      : problems;
+    if (targets.length === 0) {
+      setBatchGenProgress("没有找到符合条件的题目");
+      return;
+    }
+    if (!confirm(`确定要为 ${targets.length} 道${level > 0 ? ` ${level}级` : ""}题目生成测试数据？每道题约需2-3分钟。`)) return;
+
+    setBatchGenRunning(true);
+    setBatchGenResults([]);
+    let success = 0;
+    let failed = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      setBatchGenProgress(`正在生成 ${i + 1}/${targets.length}: ${p.title}...`);
+      setGenerating(p.id);
+
+      try {
+        const res = await fetch(`/api/admin/problems/${p.id}/generate`, { method: "POST", headers });
+        const data = await res.json();
+        if (res.ok) {
+          success++;
+          setBatchGenResults((prev) => [...prev, { title: p.title, ok: true, msg: `${data.count} 个测试点` }]);
+        } else {
+          failed++;
+          setBatchGenResults((prev) => [...prev, { title: p.title, ok: false, msg: data.error }]);
+        }
+      } catch {
+        failed++;
+        setBatchGenResults((prev) => [...prev, { title: p.title, ok: false, msg: "网络错误" }]);
+      }
+
+      setGenerating(null);
+    }
+
+    setBatchGenProgress(`批量生成完成：成功 ${success}，失败 ${failed}`);
+    setBatchGenRunning(false);
   }
 
   async function handleClearAll() {
@@ -269,6 +317,50 @@ export default function AdminProblemsPage() {
                   手动添加
                 </button>
               </div>
+            </div>
+
+            {/* 批量生成测试数据 */}
+            <div className="mb-4 rounded-lg bg-white p-4 shadow">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">批量生成测试数据</span>
+                <select
+                  value={batchGenLevel}
+                  onChange={(e) => setBatchGenLevel(e.target.value)}
+                  className="rounded-md border px-3 py-1.5 text-sm"
+                  disabled={batchGenRunning}
+                >
+                  <option value="0">全部级别</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((l) => (
+                    <option key={l} value={l}>{l}级（{problems.filter((p) => p.level === l).length} 题）</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBatchGenerate}
+                  disabled={batchGenRunning || generating !== null}
+                  className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {batchGenRunning ? "生成中..." : "开始生成"}
+                </button>
+              </div>
+
+              {batchGenProgress && (
+                <div className={`mt-3 text-sm ${batchGenRunning ? "text-yellow-700" : batchGenProgress.includes("失败") ? "text-red-600" : "text-green-700"}`}>
+                  {batchGenProgress}
+                </div>
+              )}
+
+              {batchGenResults.length > 0 && (
+                <div className="mt-3 max-h-48 space-y-1 overflow-auto">
+                  {batchGenResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate text-gray-700">{r.title}</span>
+                      <span className={r.ok ? "text-green-600" : "text-red-600"}>
+                        {r.ok ? r.msg : `失败: ${r.msg}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {showForm && (
