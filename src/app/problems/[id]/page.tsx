@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import CodeEditor, { DEFAULT_CODE } from "@/components/CodeEditor";
+import ChatPanel from "@/components/ChatPanel";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -634,6 +635,9 @@ export default function ProblemDetailPage() {
                 </div>
               </div>
             )}
+
+            {/* AI 老师 */}
+            <ChatPanel problemId={parseInt(id as string)} code={code} />
           </div>
         </div>
       </main>
