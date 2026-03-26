@@ -5,10 +5,19 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const level = url.searchParams.get("level");
+    const search = url.searchParams.get("search")?.trim();
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
     const pageSize = 20;
 
-    const where = level ? { level: parseInt(level) } : {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {};
+    if (level) where.level = parseInt(level);
+    if (search) {
+      where.OR = [
+        { title: { contains: search } },
+        { luoguId: { contains: search } },
+      ];
+    }
 
     const [problems, total] = await Promise.all([
       prisma.problem.findMany({

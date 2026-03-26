@@ -30,12 +30,19 @@ export default function ProblemsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const level = searchParams.get("level") || "";
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     setPage(1);
-  }, [level]);
+  }, [level, debouncedSearch]);
 
   useEffect(() => {
     async function fetchProblems() {
@@ -43,6 +50,7 @@ export default function ProblemsPage() {
       const token = localStorage.getItem("token");
       const params = new URLSearchParams();
       if (level) params.set("level", level);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       params.set("page", String(page));
 
       const res = await fetch(`/api/problems?${params}`, {
@@ -57,7 +65,7 @@ export default function ProblemsPage() {
       setLoading(false);
     }
     fetchProblems();
-  }, [level, page]);
+  }, [level, debouncedSearch, page]);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -73,7 +81,16 @@ export default function ProblemsPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">题库</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">题库</h1>
+          <input
+            type="text"
+            placeholder="搜索题号或题目名称..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-64 rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </div>
 
         {/* 级别筛选 */}
         <div className="mb-6 flex flex-wrap gap-2">

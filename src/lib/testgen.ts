@@ -82,11 +82,17 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}
   console.log(`[TestGen] 调用模型: ${TESTGEN_MODEL}`);
   const response = await client.messages.create({
     model: TESTGEN_MODEL,
-    max_tokens: 12000,
+    max_tokens: 16000,
     messages: [{ role: "user", content: prompt }],
   });
 
-  console.log(`[TestGen] API 返回模型: ${response.model}, usage: ${JSON.stringify(response.usage)}`);
+  console.log(`[TestGen] API 返回模型: ${response.model}, stop_reason: ${response.stop_reason}, usage: ${JSON.stringify(response.usage)}`);
+
+  if (response.stop_reason === "max_tokens") {
+    console.error("[TestGen] 响应被截断（max_tokens），输出不完整");
+    throw new Error("AI 生成的内容过长被截断，请重试");
+  }
+
   const text = response.content
     .filter((c) => c.type === "text")
     .map((c) => c.text)
@@ -100,7 +106,13 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}
   }
 
   const jsonStr = jsonMatch[1] || jsonMatch[0];
-  const parsed = JSON.parse(jsonStr);
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (e) {
+    console.error("JSON 解析失败:", (e as Error).message, "内容前500字:", jsonStr.slice(0, 500));
+    throw new Error("AI 返回的 JSON 格式无效，请重试");
+  }
 
   if (!parsed.solution1 || !parsed.solution2 || !Array.isArray(parsed.inputs) || parsed.inputs.length === 0) {
     throw new Error("AI 返回数据不完整");
