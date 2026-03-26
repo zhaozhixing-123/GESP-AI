@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ParticleBackground from "@/components/ParticleBackground";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,8 +42,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+      <ParticleBackground />
+      <div className="relative z-10 w-full max-w-sm rounded-xl bg-white/80 p-8 shadow-lg backdrop-blur-sm">
         <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">
           GESP.AI
         </h1>
