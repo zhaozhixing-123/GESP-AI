@@ -7,7 +7,8 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const TESTGEN_MODEL = "claude-sonnet-4-6";
 export const TESTGEN_MODEL_DISPLAY = "Claude Sonnet 4.6";
 
-const MAX_RETRIES = 2;
+const FALLBACK_MODEL = "claude-opus-4-6";
+const MAX_RETRIES = 3;
 
 interface Problem {
   title: string;
@@ -35,8 +36,46 @@ function buildProblemContext(problem: Problem): string {
 ${sampleText ? `**样例**:\n${sampleText}` : ""}`;
 }
 
+/** 健壮的 JSON 提取：先试 ```json 块，再试最外层 {} */
+function extractJSON(text: string): any {
+  // 策略1: 找最外层的 { 和最后一个 }
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+    } catch {}
+  }
+
+  // 策略2: ```json ... ``` 正则（fallback）
+  const jsonBlock = text.match(/```json\s*([\s\S]*?)```/);
+  if (jsonBlock) {
+    try {
+      return JSON.parse(jsonBlock[1]);
+    } catch {}
+  }
+
+  console.error("[TestGen] JSON 提取失败，原文前500字:", text.slice(0, 500));
+  throw new Error("返回格式无法解析为 JSON");
+}
+
+/** 调用 Claude 并获取文本响应 */
+async function callModel(model: string, maxTokens: number, prompt: string): Promise<string> {
+  const response = await client.messages.stream({
+    model,
+    max_tokens: maxTokens,
+    messages: [{ role: "user", content: prompt }],
+  }).finalMessage();
+
+  console.log(`[TestGen] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
+
+  if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
+
+  return response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
+}
+
 /** 第一步：生成两个独立 C++ 解法 */
-async function generateSolutions(problem: Problem): Promise<{ solution1: string; solution2: string }> {
+async function generateSolutions(problem: Problem, model: string): Promise<{ solution1: string; solution2: string }> {
   const prompt = `你是算法竞赛出题人。请根据题目写两个独立的 C++ 解法。
 
 ## 题目信息
@@ -54,37 +93,24 @@ ${buildProblemContext(problem)}
 - 同样必须正确
 
 ## 输出格式
-严格输出 JSON，不要输出其他内容：
-\`\`\`json
-{
-  "solution1": "完整C++代码",
-  "solution2": "完整C++代码"
-}
-\`\`\`
-代码中的换行用 \\n 表示。`;
+返回纯 JSON 对象（不要用 markdown 代码块包裹）。
+C++ 代码中的换行用 \\n 表示，双引号用 \\" 转义。
 
-  console.log(`[TestGen] 生成解法，模型: ${TESTGEN_MODEL}`);
-  const response = await client.messages.stream({
-    model: TESTGEN_MODEL,
-    max_tokens: 16000,
-    messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
-  console.log(`[TestGen] 解法 API 返回: model=${response.model}, stop=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
+{"solution1": "#include <iostream>\\nusing namespace std;\\nint main() {\\n...", "solution2": "#include <iostream>\\nusing namespace std;\\nint main() {\\n..."}`;
 
-  if (response.stop_reason === "max_tokens") throw new Error("解法生成被截断");
+  console.log(`[TestGen] 生成解法，模型: ${model}`);
+  const text = await callModel(model, 16000, prompt);
 
-  const text = response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
-  if (!jsonMatch) throw new Error("解法返回格式无法解析");
-
-  const parsed = JSON.parse(jsonMatch[1]);
+  const parsed = extractJSON(text);
   if (!parsed.solution1 || !parsed.solution2) throw new Error("解法数据不完整");
+  if (parsed.solution1.length < 20) throw new Error(`解法1 太短(${parsed.solution1.length}字符)，可能解析错误`);
+  if (parsed.solution2.length < 20) throw new Error(`解法2 太短(${parsed.solution2.length}字符)，可能解析错误`);
 
   return { solution1: parsed.solution1, solution2: parsed.solution2 };
 }
 
 /** 第二步：生成测试输入 */
-async function generateInputs(problem: Problem): Promise<string[]> {
+async function generateInputs(problem: Problem, model: string): Promise<string[]> {
   const prompt = `你是算法竞赛出题人。请根据题目生成 15 组测试输入数据。
 
 ## 题目信息
@@ -103,35 +129,17 @@ ${buildProblemContext(problem)}
 - 如果 n 代表数组长度/行数等，最大边界的 n 不要超过 100
 - 中等规模数据的 n 取 10-50
 - 每组输入要简洁，不要生成过长的数据
-- 这是为了在线判题系统测试，不需要极大数据
 
 ## 输出格式
-严格输出 JSON，不要输出其他内容：
-\`\`\`json
-{
-  "inputs": [
-    "第1组输入",
-    "第2组输入"
-  ]
-}
-\`\`\`
-每组输入中的换行用 \\n 表示。`;
+返回纯 JSON 对象（不要用 markdown 代码块包裹）。
+每组输入中的换行用 \\n 表示。
 
-  console.log(`[TestGen] 生成输入，模型: ${TESTGEN_MODEL}`);
-  const response = await client.messages.stream({
-    model: TESTGEN_MODEL,
-    max_tokens: 64000,
-    messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
-  console.log(`[TestGen] 输入 API 返回: model=${response.model}, stop=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
+{"inputs": ["第1组输入", "第2组输入", ...]}`;
 
-  if (response.stop_reason === "max_tokens") throw new Error("输入生成被截断");
+  console.log(`[TestGen] 生成输入，模型: ${model}`);
+  const text = await callModel(model, 64000, prompt);
 
-  const text = response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
-  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/);
-  if (!jsonMatch) throw new Error("输入返回格式无法解析");
-
-  const parsed = JSON.parse(jsonMatch[1]);
+  const parsed = extractJSON(text);
   if (!Array.isArray(parsed.inputs) || parsed.inputs.length === 0) throw new Error("输入数据不完整");
 
   return parsed.inputs;
@@ -184,7 +192,7 @@ async function verifySolution(
     const expected = normalizeOutput(samples[i].output);
 
     if (actual !== expected) {
-      console.error(`[TestGen] ${label} 样例 ${i + 1} 验证失败！期望 "${expected}"，实际 "${actual}"`);
+      console.error(`[TestGen] ${label} 样例 ${i + 1} 验证失败！期望 "${expected.slice(0, 80)}"，实际 "${actual.slice(0, 80)}"`);
       return false;
     }
 
@@ -195,37 +203,44 @@ async function verifySolution(
   return true;
 }
 
-/** 为一道题生成测试用例（主入口，带自动重试） */
+/** 为一道题生成测试用例（主入口） */
 export async function generateTestCases(problem: Problem): Promise<TestCase[]> {
   let lastError = "";
 
+  // 先用 Sonnet 尝试 3 次
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`[TestGen] 开始为 "${problem.title}" 生成测试数据（第 ${attempt} 次）...`);
-      const result = await doGenerate(problem);
+      console.log(`[TestGen] "${problem.title}" 第 ${attempt} 次（Sonnet）...`);
+      const result = await doGenerate(problem, TESTGEN_MODEL);
       if (result.length > 0) return result;
       lastError = "未能生成有效测试点";
     } catch (e: any) {
       lastError = e.message;
-      console.error(`[TestGen] 第 ${attempt} 次失败: ${lastError}`);
+      console.error(`[TestGen] Sonnet 第 ${attempt} 次失败: ${lastError}`);
       if (attempt < MAX_RETRIES) {
-        console.log("[TestGen] 等待 3 秒后重试...");
         await new Promise((r) => setTimeout(r, 3000));
       }
     }
   }
 
-  throw new Error(`${MAX_RETRIES} 次尝试均失败: ${lastError}`);
+  // Sonnet 全部失败，fallback 到 Opus 尝试 1 次
+  try {
+    console.log(`[TestGen] "${problem.title}" Sonnet 失败，尝试 Opus...`);
+    const result = await doGenerate(problem, FALLBACK_MODEL);
+    if (result.length > 0) return result;
+  } catch (e: any) {
+    console.error(`[TestGen] Opus 也失败: ${e.message}`);
+  }
+
+  throw new Error(`全部尝试失败: ${lastError}`);
 }
 
-async function doGenerate(problem: Problem): Promise<TestCase[]> {
-  // 1. 分两步调用 Claude：先解法，再输入
-  console.log("[TestGen] 第一步：生成双解法...");
-  const { solution1, solution2 } = await generateSolutions(problem);
+async function doGenerate(problem: Problem, model: string): Promise<TestCase[]> {
+  // 1. 生成解法和输入
+  const { solution1, solution2 } = await generateSolutions(problem, model);
   console.log(`[TestGen] 解法1: ${solution1.length} 字符，解法2: ${solution2.length} 字符`);
 
-  console.log("[TestGen] 第二步：生成测试输入...");
-  const inputs = await generateInputs(problem);
+  const inputs = await generateInputs(problem, model);
   console.log(`[TestGen] 获得 ${inputs.length} 组输入`);
 
   // 2. 用全部样例验证两个解法
