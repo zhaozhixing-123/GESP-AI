@@ -63,11 +63,11 @@ ${buildProblemContext(problem)}
 代码中的换行用 \\n 表示。`;
 
   console.log(`[TestGen] 生成解法，模型: ${TESTGEN_MODEL}`);
-  const response = await client.messages.create({
+  const response = await client.messages.stream({
     model: TESTGEN_MODEL,
     max_tokens: 16000,
     messages: [{ role: "user", content: prompt }],
-  });
+  }).finalMessage();
   console.log(`[TestGen] 解法 API 返回: model=${response.model}, stop=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
 
   if (response.stop_reason === "max_tokens") throw new Error("解法生成被截断");
@@ -111,11 +111,11 @@ ${buildProblemContext(problem)}
 每组输入中的换行用 \\n 表示。`;
 
   console.log(`[TestGen] 生成输入，模型: ${TESTGEN_MODEL}`);
-  const response = await client.messages.create({
+  const response = await client.messages.stream({
     model: TESTGEN_MODEL,
     max_tokens: 32000,
     messages: [{ role: "user", content: prompt }],
-  });
+  }).finalMessage();
   console.log(`[TestGen] 输入 API 返回: model=${response.model}, stop=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
 
   if (response.stop_reason === "max_tokens") throw new Error("输入生成被截断");

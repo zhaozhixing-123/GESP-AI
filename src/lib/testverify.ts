@@ -55,11 +55,11 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}
 \`\`\``;
 
   console.log(`[Verify] 调用模型: ${VERIFY_MODEL}`);
-  const response = await client.messages.create({
+  const response = await client.messages.stream({
     model: VERIFY_MODEL,
     max_tokens: 6000,
     messages: [{ role: "user", content: prompt }],
-  });
+  }).finalMessage();
 
   console.log(`[Verify] API 返回模型: ${response.model}`);
   const text = response.content
