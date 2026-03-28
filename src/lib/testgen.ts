@@ -85,7 +85,7 @@ ${buildProblemContext(problem)}
 
 /** 第二步：生成测试输入 */
 async function generateInputs(problem: Problem): Promise<string[]> {
-  const prompt = `你是算法竞赛出题人。请根据题目生成 18 组测试输入数据。
+  const prompt = `你是算法竞赛出题人。请根据题目生成 15 组测试输入数据。
 
 ## 题目信息
 ${buildProblemContext(problem)}
@@ -93,11 +93,17 @@ ${buildProblemContext(problem)}
 ## 要求
 严格遵守题目的数据范围，生成以下类型的测试输入：
 - 2-3 组最小边界（最小的 n、最小值等）
-- 2-3 组最大边界（最大的 n、最大值等，不要超过数据范围）
+- 2-3 组最大边界
 - 2-3 组特殊情况（全是同一个数、全是0、全是最大值等）
-- 8-10 组随机中等规模数据
+- 5-7 组随机中等规模数据
 
 只需要输入数据，不需要输出。
+
+## 重要：控制每组输入的长度
+- 如果 n 代表数组长度/行数等，最大边界的 n 不要超过 100
+- 中等规模数据的 n 取 10-50
+- 每组输入要简洁，不要生成过长的数据
+- 这是为了在线判题系统测试，不需要极大数据
 
 ## 输出格式
 严格输出 JSON，不要输出其他内容：
@@ -114,7 +120,7 @@ ${buildProblemContext(problem)}
   console.log(`[TestGen] 生成输入，模型: ${TESTGEN_MODEL}`);
   const response = await client.messages.stream({
     model: TESTGEN_MODEL,
-    max_tokens: 32000,
+    max_tokens: 64000,
     messages: [{ role: "user", content: prompt }],
   }).finalMessage();
   console.log(`[TestGen] 输入 API 返回: model=${response.model}, stop=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
