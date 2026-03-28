@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { judgeCode, mapStatus, getErrorMessage } from "@/lib/judge0";
+import { normalizeOutput } from "@/lib/normalize";
 
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
@@ -44,8 +45,8 @@ export async function POST(request: NextRequest) {
       for (const sample of samples) {
         const result = await judgeCode(code, sample.input);
         const status = mapStatus(result);
-        const actualOutput = (result.stdout || "").replace(/\s+$/, "");
-        const expectedOutput = sample.output.replace(/\s+$/, "");
+        const actualOutput = normalizeOutput(result.stdout || "");
+        const expectedOutput = normalizeOutput(sample.output);
         const error = getErrorMessage(result);
 
         // AC 只表示程序正常运行，需要对比输出

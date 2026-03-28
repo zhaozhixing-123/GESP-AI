@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
+import { normalizeOutput } from "./normalize";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -97,8 +98,8 @@ export async function verifyTestCases(
     console.log(`[Verify] 用 ${samples.length} 个样例验证 Opus 解法...`);
     for (let i = 0; i < samples.length; i++) {
       const result = await judgeCode(solution, samples[i].input);
-      const actual = (result.stdout || "").replace(/\s+$/, "");
-      const expected = samples[i].output.replace(/\s+$/, "");
+      const actual = normalizeOutput(result.stdout || "");
+      const expected = normalizeOutput(samples[i].output);
 
       if (actual !== expected) {
         throw new Error(`Opus 解法样例 ${i + 1} 验证失败（期望 "${expected}"，实际 "${actual}"），无法进行复核`);
@@ -134,8 +135,8 @@ export async function verifyTestCases(
         continue;
       }
 
-      const opusOutput = (result.stdout || "").replace(/\s+$/, "");
-      const expectedOutput = tc.output.replace(/\s+$/, "");
+      const opusOutput = normalizeOutput(result.stdout || "");
+      const expectedOutput = normalizeOutput(tc.output);
 
       if (opusOutput === expectedOutput) {
         details.push({

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
+import { normalizeOutput } from "./normalize";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -150,7 +151,7 @@ async function runSolution(
         continue;
       }
 
-      const output = (result.stdout || "").replace(/\s+$/, "");
+      const output = normalizeOutput(result.stdout || "");
       results.set(input, output);
     } catch (e: any) {
       console.error(`[TestGen] ${label} 测试点 ${i + 1} 异常: ${e.message}`);
@@ -173,8 +174,8 @@ async function verifySolution(
   for (let i = 0; i < samples.length; i++) {
     console.log(`[TestGen] ${label} 验证样例 ${i + 1}/${samples.length}...`);
     const result = await judgeCode(solution, samples[i].input);
-    const actual = (result.stdout || "").replace(/\s+$/, "");
-    const expected = samples[i].output.replace(/\s+$/, "");
+    const actual = normalizeOutput(result.stdout || "");
+    const expected = normalizeOutput(samples[i].output);
 
     if (actual !== expected) {
       console.error(`[TestGen] ${label} 样例 ${i + 1} 验证失败！期望 "${expected}"，实际 "${actual}"`);
