@@ -113,7 +113,7 @@ ${buildProblemContext(problem)}
   console.log(`[TestGen] 生成输入，模型: ${TESTGEN_MODEL}`);
   const response = await client.messages.create({
     model: TESTGEN_MODEL,
-    max_tokens: 8000,
+    max_tokens: 32000,
     messages: [{ role: "user", content: prompt }],
   });
   console.log(`[TestGen] 输入 API 返回: model=${response.model}, stop=${response.stop_reason}, usage=${JSON.stringify(response.usage)}`);
