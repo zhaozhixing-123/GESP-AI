@@ -61,21 +61,20 @@ function extractJSON(text: string): any {
 
 /** 调用 Claude 并获取文本响应，使用 prefill 强制 JSON 输出 */
 async function callModel(model: string, maxTokens: number, prompt: string): Promise<string> {
-  const response = await client.messages.stream({
+  const response = await client.messages.create({
     model,
     max_tokens: maxTokens,
     messages: [
       { role: "user", content: prompt },
       { role: "assistant", content: "{" },
     ],
-  }).finalMessage();
+  });
 
   console.log(`[TestGen] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
   const text = response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
-  // prefill 了 "{"，补回来
   return "{" + text;
 }
 
