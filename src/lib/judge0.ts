@@ -68,7 +68,9 @@ export async function getJudge0Result(token: string): Promise<Judge0Result> {
   );
 
   if (!res.ok) {
-    throw new Error(`Judge0 get result failed: ${res.status}`);
+    const text = await res.text();
+    console.error(`[Judge0] GET /submissions/${token} failed: ${res.status} ${text}`);
+    throw new Error(`Judge0 get result failed: ${res.status} ${text}`);
   }
 
   return res.json();
