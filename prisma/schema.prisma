@@ -19,18 +19,20 @@ model User {
 }
 
 model Problem {
-  id           Int          @id @default(autoincrement())
-  luoguId      String       @unique
-  title        String
-  level        Int          // 1-8 GESP级别
-  description  String
-  inputFormat  String
-  outputFormat String
-  samples      String       // JSON: [{input, output}]
-  testCases    String       // JSON: [{input, output}]
-  submissions  Submission[]
-  wrongBooks   WrongBook[]
-  chatHistory  ChatHistory[]
+  id            Int          @id @default(autoincrement())
+  luoguId       String       @unique
+  title         String
+  level         Int          // 1-8 GESP级别
+  description   String
+  inputFormat   String
+  outputFormat  String
+  samples       String       // JSON: [{input, output}]
+  testCases     String       // JSON: [{input, output}]
+  verifiedAt    DateTime?    // 上次复核时间
+  verifiedCount Int          @default(0) // 复核通过的测试点数
+  submissions   Submission[]
+  wrongBooks    WrongBook[]
+  chatHistory   ChatHistory[]
 }
 
 model Submission {

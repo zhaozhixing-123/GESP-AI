@@ -43,7 +43,11 @@ export async function POST(
 
       await prisma.problem.update({
         where: { id: parseInt(id) },
-        data: { testCases: JSON.stringify(cleanedTestCases) },
+        data: {
+          testCases: JSON.stringify(cleanedTestCases),
+          verifiedAt: new Date(),
+          verifiedCount: cleanedTestCases.length,
+        },
       });
 
       return Response.json({
@@ -53,6 +57,14 @@ export async function POST(
         remaining: cleanedTestCases.length,
       });
     }
+
+    await prisma.problem.update({
+      where: { id: parseInt(id) },
+      data: {
+        verifiedAt: new Date(),
+        verifiedCount: result.total,
+      },
+    });
 
     return Response.json({
       message: `复核完成：全部 ${result.total} 个测试点均通过`,

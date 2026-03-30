@@ -30,7 +30,7 @@ interface VerifyResult {
   }>;
 }
 
-/** 调 Opus 生成一个正确的 C++ 解法 */
+/** 调 Opus 生成一个正确的 C++ 解法（使用 tool_use 强制结构化输出） */
 async function getOpusSolution(problem: Problem): Promise<string> {
   const samples = JSON.parse(problem.samples || "[]");
   const sampleText = samples
@@ -46,34 +46,46 @@ async function getOpusSolution(problem: Problem): Promise<string> {
 **输出格式**: ${problem.outputFormat}
 ${sampleText ? `**样例**:\n${sampleText}` : ""}
 
+## 重要：先验证样例
+在写代码之前，请先仔细阅读每个样例，手动推演一遍输入到输出的完整过程。
+特别注意：边界条件（是否包含端点）、计数方式（从0还是从1）、四舍五入规则等。
+
 ## 要求
 - 写一个完全正确的 C++ 程序，读 stdin 写 stdout
 - 确保逻辑严谨，处理所有边界情况
-- 只输出代码，不要任何解释
 
-\`\`\`cpp
-你的代码
-\`\`\``;
+请调用 submit_solution 工具提交你的解法。`;
 
   console.log(`[Verify] 调用模型: ${VERIFY_MODEL}`);
   const response = await client.messages.stream({
     model: VERIFY_MODEL,
-    max_tokens: 6000,
+    max_tokens: 16000,
+    tools: [{
+      name: "submit_solution",
+      description: "提交 C++ 解法",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          solution: { type: "string", description: "完整的 C++ 代码" },
+        },
+        required: ["solution"],
+      },
+    }],
+    tool_choice: { type: "tool" as const, name: "submit_solution" },
     messages: [{ role: "user", content: prompt }],
   }).finalMessage();
 
-  console.log(`[Verify] API 返回模型: ${response.model}`);
-  const text = response.content
-    .filter((c) => c.type === "text")
-    .map((c) => c.text)
-    .join("");
+  console.log(`[Verify] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 
-  const codeMatch = text.match(/```cpp\s*([\s\S]*?)```/) || text.match(/```c\+\+\s*([\s\S]*?)```/) || text.match(/```\s*(#include[\s\S]*?)```/);
-  if (!codeMatch) {
-    throw new Error("Opus 返回的代码无法解析");
-  }
+  if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
-  return codeMatch[1].trim();
+  const toolBlock = response.content.find((c) => c.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Opus 未返回工具调用");
+
+  const input = toolBlock.input as { solution: string };
+  if (!input.solution || input.solution.length < 20) throw new Error("Opus 返回的代码太短");
+
+  return input.solution;
 }
 
 /** 用 Opus 解法验证所有测试用例 */
@@ -88,26 +100,55 @@ export async function verifyTestCases(
     throw new Error("该题目没有测试数据");
   }
 
-  // 1. 调 Opus 生成解法
-  console.log(`[Verify] 调用 Opus 为 "${problem.title}" 生成解法...`);
-  const solution = await getOpusSolution(problem);
-  console.log(`[Verify] Opus 返回了 ${solution.length} 字符的解法`);
+  // 1. 调 Opus 生成解法（带重试）
+  const MAX_SOLUTION_RETRIES = 3;
+  let solution = "";
 
-  // 2. 用全部样例验证 Opus 解法
-  if (samples.length > 0) {
-    console.log(`[Verify] 用 ${samples.length} 个样例验证 Opus 解法...`);
-    for (let i = 0; i < samples.length; i++) {
-      const result = await judgeCode(solution, samples[i].input);
-      const actual = normalizeOutput(result.stdout || "");
-      const expected = normalizeOutput(samples[i].output);
+  for (let attempt = 1; attempt <= MAX_SOLUTION_RETRIES; attempt++) {
+    try {
+      console.log(`[Verify] 第 ${attempt} 次为 "${problem.title}" 生成解法...`);
+      solution = await getOpusSolution(problem);
+      console.log(`[Verify] Opus 返回了 ${solution.length} 字符的解法`);
 
-      if (actual !== expected) {
-        throw new Error(`Opus 解法样例 ${i + 1} 验证失败（期望 "${expected}"，实际 "${actual}"），无法进行复核`);
+      // 2. 用全部样例验证 Opus 解法
+      if (samples.length > 0) {
+        console.log(`[Verify] 用 ${samples.length} 个样例验证 Opus 解法...`);
+        let samplePassed = true;
+        for (let i = 0; i < samples.length; i++) {
+          const result = await judgeCode(solution, samples[i].input);
+          const actual = normalizeOutput(result.stdout || "");
+          const expected = normalizeOutput(samples[i].output);
+
+          if (actual !== expected) {
+            console.error(`[Verify] 样例 ${i + 1} 验证失败（期望 "${expected.slice(0, 80)}"，实际 "${actual.slice(0, 80)}"）`);
+            samplePassed = false;
+            break;
+          }
+
+          if (i < samples.length - 1) await new Promise((r) => setTimeout(r, 1500));
+        }
+
+        if (!samplePassed) {
+          if (attempt < MAX_SOLUTION_RETRIES) {
+            console.warn(`[Verify] 第 ${attempt} 次样例验证失败，重试...`);
+            await new Promise((r) => setTimeout(r, 3000));
+            continue;
+          }
+          throw new Error(`Opus 解法 ${MAX_SOLUTION_RETRIES} 次尝试均未通过样例验证，无法进行复核`);
+        }
+
+        console.log("[Verify] Opus 解法通过全部样例验证");
       }
 
-      if (i < samples.length - 1) await new Promise((r) => setTimeout(r, 1500));
+      break; // 成功，跳出重试循环
+    } catch (e: any) {
+      if (attempt < MAX_SOLUTION_RETRIES && !e.message.includes("次尝试均未通过")) {
+        console.warn(`[Verify] 第 ${attempt} 次失败: ${e.message}，重试...`);
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+      throw e;
     }
-    console.log("[Verify] Opus 解法通过全部样例验证");
   }
 
   // 3. 用 Opus 解法跑所有测试点

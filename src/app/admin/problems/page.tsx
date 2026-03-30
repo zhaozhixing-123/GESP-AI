@@ -9,6 +9,8 @@ interface Problem {
   title: string;
   level: number;
   testCases?: string;
+  verifiedAt?: string | null;
+  verifiedCount?: number;
 }
 
 interface ImportResult {
@@ -51,6 +53,17 @@ export default function AdminProblemsPage() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  function getTimeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "刚刚";
+    if (mins < 60) return `${mins}分钟前`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}小时前`;
+    const days = Math.floor(hours / 24);
+    return `${days}天前`;
+  }
 
   // --- 题目列表逻辑 ---
   const [searchQuery, setSearchQuery] = useState("");
@@ -146,10 +159,6 @@ export default function AdminProblemsPage() {
     setTimeout(() => setGenMsg(""), 8000);
   }
 
-  function getTestCaseCount(p: Problem): number {
-    try { return JSON.parse(p.testCases || "[]").length; } catch { return 0; }
-  }
-
   async function handleBatchGenerate() {
     if (batchGenRunning || generating) return;
     const level = parseInt(batchGenLevel);
@@ -224,15 +233,49 @@ export default function AdminProblemsPage() {
   const [batchVerifyProgress, setBatchVerifyProgress] = useState("");
   const [batchVerifyResults, setBatchVerifyResults] = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
 
+  // 带 502 重试的 fetch
+  async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await fetch(url, options);
+        if (res.status === 502 && i < retries) {
+          await new Promise((r) => setTimeout(r, 5000));
+          continue;
+        }
+        return res;
+      } catch (e) {
+        if (i === retries) throw e;
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+    throw new Error("请求失败");
+  }
+
+  // 判断题目是否有测试用例
+  function getTestCaseCount(p: Problem): number {
+    try {
+      const tc = JSON.parse(p.testCases || "[]");
+      return Array.isArray(tc) ? tc.length : 0;
+    } catch { return 0; }
+  }
+
+  // 判断题目是否已全部复核通过
+  function isFullyVerified(p: Problem): boolean {
+    if (!p.verifiedAt) return false;
+    const tcCount = getTestCaseCount(p);
+    return tcCount > 0 && (p.verifiedCount ?? 0) === tcCount;
+  }
+
   async function handleVerify(id: number) {
     if (verifying || batchVerifyRunning || generating || batchGenRunning) return;
     setVerifying(id);
-    setVerifyMsg("正在用 批量复核测试用例...");
+    setVerifyMsg("正在用 Opus 复核测试用例...");
     try {
-      const res = await fetch(`/api/admin/problems/${id}/verify`, { method: "POST", headers });
+      const res = await fetchWithRetry(`/api/admin/problems/${id}/verify`, { method: "POST", headers });
       const data = await res.json();
       if (res.ok) {
         setVerifyMsg(`${data.message}（by ${data.model}）`);
+        fetchProblems();
       } else {
         setVerifyMsg(`失败: ${data.error}`);
       }
@@ -246,14 +289,27 @@ export default function AdminProblemsPage() {
   async function handleBatchVerify() {
     if (batchVerifyRunning || verifying || generating || batchGenRunning) return;
     const level = parseInt(batchVerifyLevel);
-    const targets = level > 0
-      ? problems.filter((p) => p.level === level)
-      : problems;
+    const levelProblems = level > 0 ? problems.filter((p) => p.level === level) : problems;
+
+    // 过滤：跳过无测试用例 + 跳过已全部复核通过的
+    const targets = levelProblems.filter((p) => getTestCaseCount(p) > 0 && !isFullyVerified(p));
+    const skippedNoTc = levelProblems.filter((p) => getTestCaseCount(p) === 0).length;
+    const skippedVerified = levelProblems.filter((p) => getTestCaseCount(p) > 0 && isFullyVerified(p)).length;
+
     if (targets.length === 0) {
-      setBatchVerifyProgress("没有找到符合条件的题目");
+      const reasons = [];
+      if (skippedNoTc > 0) reasons.push(`${skippedNoTc} 题无测试用例`);
+      if (skippedVerified > 0) reasons.push(`${skippedVerified} 题已通过复核`);
+      setBatchVerifyProgress(`没有需要复核的题目${reasons.length > 0 ? `（${reasons.join("，")}）` : ""}`);
       return;
     }
-    if (!confirm(`确定要用 Opus 复核 ${targets.length} 道${level > 0 ? ` ${level}级` : ""}题目的测试数据？每道题约需2-3分钟。`)) return;
+
+    const skipInfo = [];
+    if (skippedNoTc > 0) skipInfo.push(`${skippedNoTc} 题无测试用例已跳过`);
+    if (skippedVerified > 0) skipInfo.push(`${skippedVerified} 题已通过复核已跳过`);
+    const skipText = skipInfo.length > 0 ? `\n（${skipInfo.join("，")}）` : "";
+
+    if (!confirm(`确定要用 Opus 复核 ${targets.length} 道${level > 0 ? ` ${level}级` : ""}题目的测试数据？每道题约需2-3分钟。${skipText}`)) return;
 
     setBatchVerifyRunning(true);
     setBatchVerifyResults([]);
@@ -266,7 +322,7 @@ export default function AdminProblemsPage() {
       setVerifying(p.id);
 
       try {
-        const res = await fetch(`/api/admin/problems/${p.id}/verify`, { method: "POST", headers });
+        const res = await fetchWithRetry(`/api/admin/problems/${p.id}/verify`, { method: "POST", headers });
         const data = await res.json();
         if (res.ok) {
           const hasIssue = data.failed > 0;
@@ -290,6 +346,7 @@ export default function AdminProblemsPage() {
 
     setBatchVerifyProgress(`复核完成：${ok} 题全通过，${bad} 题有问题（已自动清理）`);
     setBatchVerifyRunning(false);
+    fetchProblems();
   }
 
   // --- 单题导入逻辑 ---
@@ -626,6 +683,7 @@ export default function AdminProblemsPage() {
                       <th className="px-4 py-3 font-medium">标题</th>
                       <th className="px-4 py-3 font-medium">级别</th>
                       <th className="px-4 py-3 font-medium">测试点</th>
+                      <th className="px-4 py-3 font-medium">复核状态</th>
                       <th className="px-4 py-3 font-medium">操作</th>
                     </tr>
                   </thead>
@@ -641,6 +699,19 @@ export default function AdminProblemsPage() {
                             return count > 0
                               ? <span className="text-green-600">{count}</span>
                               : <span className="text-gray-300">0</span>;
+                          })()}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          {(() => {
+                            const tcCount = getTestCaseCount(p);
+                            if (tcCount === 0) return <span className="text-gray-300">-</span>;
+                            if (!p.verifiedAt) return <span className="text-gray-400">未复核</span>;
+                            const vc = p.verifiedCount ?? 0;
+                            const allPassed = vc === tcCount;
+                            const timeAgo = getTimeAgo(p.verifiedAt);
+                            return allPassed
+                              ? <span className="text-green-600" title={timeAgo}>{vc}/{tcCount} &#10003;</span>
+                              : <span className="text-amber-600" title={timeAgo}>{vc}/{tcCount} &#9888;</span>;
                           })()}
                         </td>
                         <td className="px-4 py-3 text-sm">
