@@ -59,23 +59,20 @@ function extractJSON(text: string): any {
   throw new Error("返回格式无法解析为 JSON");
 }
 
-/** 调用 Claude 并获取文本响应，使用 prefill 强制 JSON 输出 */
+/** 调用 Claude 并获取文本响应 */
 async function callModel(model: string, maxTokens: number, prompt: string): Promise<string> {
   const response = await client.messages.create({
     model,
     max_tokens: maxTokens,
-    messages: [
-      { role: "user", content: prompt },
-      { role: "assistant", content: "{" },
-    ],
+    system: "你是一个 JSON API。你只能输出合法的 JSON 对象，不能输出任何其他文字、分析、解释或 markdown。第一个字符必须是 {，最后一个字符必须是 }。",
+    messages: [{ role: "user", content: prompt }],
   });
 
   console.log(`[TestGen] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
-  const text = response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
-  return "{" + text;
+  return response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
 }
 
 /** 第一步：生成两个独立 C++ 解法 */
