@@ -36,35 +36,18 @@ function buildProblemContext(problem: Problem): string {
 ${sampleText ? `**样例**:\n${sampleText}` : ""}`;
 }
 
-/** 健壮的 JSON 提取：先试 ```json 块，再试最外层 {} */
-function extractJSON(text: string): any {
-  // 策略1: 找最外层的 { 和最后一个 }
-  const firstBrace = text.indexOf("{");
-  const lastBrace = text.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    try {
-      return JSON.parse(text.slice(firstBrace, lastBrace + 1));
-    } catch {}
-  }
-
-  // 策略2: ```json ... ``` 正则（fallback）
-  const jsonBlock = text.match(/```json\s*([\s\S]*?)```/);
-  if (jsonBlock) {
-    try {
-      return JSON.parse(jsonBlock[1]);
-    } catch {}
-  }
-
-  console.error("[TestGen] JSON 提取失败，原文前500字:", text.slice(0, 500));
-  throw new Error("返回格式无法解析为 JSON");
-}
-
-/** 调用 Claude 并获取文本响应 */
-async function callModel(model: string, maxTokens: number, prompt: string): Promise<string> {
+/** 使用 tool_use 强制结构化输出 */
+async function callModelWithTool<T>(
+  model: string,
+  maxTokens: number,
+  prompt: string,
+  tool: { name: string; description: string; input_schema: { type: "object"; properties: Record<string, unknown>; required: string[] } }
+): Promise<T> {
   const response = await client.messages.stream({
     model,
     max_tokens: maxTokens,
-    system: "你是一个 JSON API。你只能输出合法的 JSON 对象，不能输出任何其他文字、分析、解释或 markdown。第一个字符必须是 {，最后一个字符必须是 }。",
+    tools: [tool],
+    tool_choice: { type: "tool" as const, name: tool.name },
     messages: [{ role: "user", content: prompt }],
   }).finalMessage();
 
@@ -72,7 +55,10 @@ async function callModel(model: string, maxTokens: number, prompt: string): Prom
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
-  return response.content.filter((c) => c.type === "text").map((c) => c.text).join("");
+  const toolBlock = response.content.find((c) => c.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("模型未返回工具调用");
+
+  return toolBlock.input as T;
 }
 
 /** 第一步：生成两个独立 C++ 解法 */
@@ -81,6 +67,11 @@ async function generateSolutions(problem: Problem, model: string): Promise<{ sol
 
 ## 题目信息
 ${buildProblemContext(problem)}
+
+## 重要：先验证样例
+在写代码之前，请先仔细阅读每个样例，手动推演一遍输入到输出的完整过程。
+特别注意：边界条件（是否包含端点）、计数方式（从0还是从1）、四舍五入规则等。
+你的代码必须在这些样例上产生完全一致的输出。
 
 ## 任务
 写两个完全独立的 C++ 解法，每个都能正确解决这道题。
@@ -93,21 +84,30 @@ ${buildProblemContext(problem)}
 - 用与 solution1 不同的算法思路
 - 同样必须正确
 
-## 输出格式
-返回纯 JSON 对象（不要用 markdown 代码块包裹）。
-C++ 代码中的换行用 \\n 表示，双引号用 \\" 转义。
-
-{"solution1": "#include <iostream>\\nusing namespace std;\\nint main() {\\n...", "solution2": "#include <iostream>\\nusing namespace std;\\nint main() {\\n..."}`;
+请调用 submit_solutions 工具提交你的两个解法。`;
 
   console.log(`[TestGen] 生成解法，模型: ${model}`);
-  const text = await callModel(model, 16000, prompt);
+  const result = await callModelWithTool<{ solution1: string; solution2: string }>(
+    model, 32000, prompt,
+    {
+      name: "submit_solutions",
+      description: "提交两个独立的 C++ 解法",
+      input_schema: {
+        type: "object",
+        properties: {
+          solution1: { type: "string", description: "暴力法 C++ 完整代码" },
+          solution2: { type: "string", description: "不同思路的 C++ 完整代码" },
+        },
+        required: ["solution1", "solution2"],
+      },
+    }
+  );
 
-  const parsed = extractJSON(text);
-  if (!parsed.solution1 || !parsed.solution2) throw new Error("解法数据不完整");
-  if (parsed.solution1.length < 20) throw new Error(`解法1 太短(${parsed.solution1.length}字符)，可能解析错误`);
-  if (parsed.solution2.length < 20) throw new Error(`解法2 太短(${parsed.solution2.length}字符)，可能解析错误`);
+  if (!result.solution1 || !result.solution2) throw new Error("解法数据不完整");
+  if (result.solution1.length < 20) throw new Error(`解法1 太短(${result.solution1.length}字符)，可能解析错误`);
+  if (result.solution2.length < 20) throw new Error(`解法2 太短(${result.solution2.length}字符)，可能解析错误`);
 
-  return { solution1: parsed.solution1, solution2: parsed.solution2 };
+  return result;
 }
 
 /** 第二步：生成测试输入 */
@@ -131,19 +131,31 @@ ${buildProblemContext(problem)}
 - 中等规模数据的 n 取 10-50
 - 每组输入要简洁，不要生成过长的数据
 
-## 输出格式
-返回纯 JSON 对象（不要用 markdown 代码块包裹）。
-每组输入中的换行用 \\n 表示。
-
-{"inputs": ["第1组输入", "第2组输入", ...]}`;
+请调用 submit_inputs 工具提交测试输入。`;
 
   console.log(`[TestGen] 生成输入，模型: ${model}`);
-  const text = await callModel(model, 64000, prompt);
+  const result = await callModelWithTool<{ inputs: string[] }>(
+    model, 64000, prompt,
+    {
+      name: "submit_inputs",
+      description: "提交测试输入数据",
+      input_schema: {
+        type: "object",
+        properties: {
+          inputs: {
+            type: "array",
+            items: { type: "string" },
+            description: "15 组测试输入，每组是一个字符串，行之间用 \\n 分隔",
+          },
+        },
+        required: ["inputs"],
+      },
+    }
+  );
 
-  const parsed = extractJSON(text);
-  if (!Array.isArray(parsed.inputs) || parsed.inputs.length === 0) throw new Error("输入数据不完整");
+  if (!Array.isArray(result.inputs) || result.inputs.length === 0) throw new Error("输入数据不完整");
 
-  return parsed.inputs;
+  return result.inputs;
 }
 
 /** 用 Judge0 运行一个解法，返回 input → output 映射 */
