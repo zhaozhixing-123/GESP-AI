@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Problem" ADD COLUMN "verifiedAt" TIMESTAMP(3);
+ALTER TABLE "Problem" ADD COLUMN "verifiedCount" INTEGER NOT NULL DEFAULT 0;
