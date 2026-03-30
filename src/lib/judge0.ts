@@ -36,17 +36,30 @@ export interface Judge0Result {
 // 7-12 = Various runtime errors, 13 = Internal Error, 14 = Exec Format Error
 // 注意: Judge0 没有独立的 MLE 状态，内存超限会报告为 RE
 
+function toBase64(str: string): string {
+  return Buffer.from(str, "utf-8").toString("base64");
+}
+
+function fromBase64(str: string | null): string | null {
+  if (!str) return null;
+  try {
+    return Buffer.from(str, "base64").toString("utf-8");
+  } catch {
+    return str;
+  }
+}
+
 export async function submitToJudge0(
   sourceCode: string,
   stdin: string
 ): Promise<string> {
-  const res = await fetch(`${API_URL}/submissions?base64_encoded=false&wait=false`, {
+  const res = await fetch(`${API_URL}/submissions?base64_encoded=true&wait=false`, {
     method: "POST",
     headers,
     body: JSON.stringify({
       language_id: CPP_LANGUAGE_ID,
-      source_code: sourceCode,
-      stdin,
+      source_code: toBase64(sourceCode),
+      stdin: toBase64(stdin),
       cpu_time_limit: CPU_TIME_LIMIT,
       memory_limit: MEMORY_LIMIT,
     }),
@@ -63,7 +76,7 @@ export async function submitToJudge0(
 
 export async function getJudge0Result(token: string): Promise<Judge0Result> {
   const res = await fetch(
-    `${API_URL}/submissions/${token}?base64_encoded=false&fields=token,status,stdout,stderr,compile_output,message,time,memory`,
+    `${API_URL}/submissions/${token}?base64_encoded=true&fields=token,status,stdout,stderr,compile_output,message,time,memory`,
     { headers }
   );
 
@@ -73,7 +86,14 @@ export async function getJudge0Result(token: string): Promise<Judge0Result> {
     throw new Error(`Judge0 get result failed: ${res.status} ${text}`);
   }
 
-  return res.json();
+  const raw = await res.json();
+  return {
+    ...raw,
+    stdout: fromBase64(raw.stdout),
+    stderr: fromBase64(raw.stderr),
+    compile_output: fromBase64(raw.compile_output),
+    message: fromBase64(raw.message),
+  };
 }
 
 function sleep(ms: number) {
