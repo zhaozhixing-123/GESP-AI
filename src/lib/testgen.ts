@@ -61,12 +61,12 @@ function extractJSON(text: string): any {
 
 /** 调用 Claude 并获取文本响应 */
 async function callModel(model: string, maxTokens: number, prompt: string): Promise<string> {
-  const response = await client.messages.create({
+  const response = await client.messages.stream({
     model,
     max_tokens: maxTokens,
     system: "你是一个 JSON API。你只能输出合法的 JSON 对象，不能输出任何其他文字、分析、解释或 markdown。第一个字符必须是 {，最后一个字符必须是 }。",
     messages: [{ role: "user", content: prompt }],
-  });
+  }).finalMessage();
 
   console.log(`[TestGen] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 
