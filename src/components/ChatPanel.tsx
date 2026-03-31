@@ -129,8 +129,8 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
   }
 
   return (
-    <div className="rounded-lg bg-white shadow">
-      <div className="flex items-center justify-between border-b px-4 py-3">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-900">AI 老师</span>
           {model && <span className="text-xs text-gray-400">({model})</span>}
@@ -147,7 +147,7 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
       </div>
 
       {/* 消息列表 */}
-      <div className="h-80 overflow-auto p-4 space-y-3">
+      <div className="flex-1 overflow-auto p-4 space-y-3">
         {messages.length === 0 && !streaming && (
           <div className="py-8 text-center text-sm text-gray-400">
             有问题就问 AI 老师吧！我会引导你思考，但不会直接给答案哦。

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import CodeEditor, { DEFAULT_CODE } from "@/components/CodeEditor";
@@ -246,24 +246,60 @@ export default function ProblemDetailPage() {
     setSubmitting(false);
   }
 
+  // 拖拽分隔线逻辑
+  const [leftWidth, setLeftWidth] = useState(40);
+  const dragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    if (!dragging.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    setLeftWidth(Math.min(Math.max(pct, 20), 70));
+  }, []);
+
+  const onMouseUp = useCallback(() => {
+    dragging.current = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [onMouseMove, onMouseUp]);
+
+  function startDrag() {
+    dragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  // 右面板底部标签页
+  const [bottomTab, setBottomTab] = useState<"results" | "chat">("results");
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex h-screen flex-col">
         <Navbar />
-        <main className="mx-auto max-w-6xl px-4 py-8">
+        <div className="flex flex-1 items-center justify-center">
           <div className="text-gray-500">加载中...</div>
-        </main>
+        </div>
       </div>
     );
   }
 
   if (!problem) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex h-screen flex-col">
         <Navbar />
-        <main className="mx-auto max-w-6xl px-4 py-8">
+        <div className="flex flex-1 items-center justify-center">
           <div className="text-gray-500">题目不存在</div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -272,54 +308,58 @@ export default function ProblemDetailPage() {
   const busy = submitting || running;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex h-screen flex-col bg-gray-100">
       <Navbar />
-      <main className="mx-auto max-w-7xl px-4 py-8">
-        {/* 返回按钮 */}
-        <button
-          onClick={() => router.back()}
-          className="mb-4 text-sm text-blue-600 hover:underline"
+
+      {/* 全屏分栏容器 */}
+      <div ref={containerRef} className="flex flex-1 overflow-hidden">
+        {/* ===== 左面板：题目信息 ===== */}
+        <div
+          className="overflow-y-auto bg-white"
+          style={{ width: `${leftWidth}%`, minWidth: 0 }}
         >
-          &larr; 返回题目列表
-        </button>
+          <div className="space-y-4 p-5">
+            {/* 返回 + 标题 */}
+            <button
+              onClick={() => router.back()}
+              className="text-sm text-blue-600 hover:underline"
+            >
+              &larr; 返回题目列表
+            </button>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold text-gray-900">{problem.title}</h1>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  LEVEL_COLORS[problem.level] || "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {problem.level}级
+              </span>
+              <span className="text-sm text-gray-400 font-mono">{problem.luoguId}</span>
+            </div>
 
-        {/* 标题 */}
-        <div className="mb-6 flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">{problem.title}</h1>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
-              LEVEL_COLORS[problem.level] || "bg-gray-100 text-gray-600"
-            }`}
-          >
-            {problem.level}级
-          </span>
-          <span className="text-sm text-gray-400 font-mono">{problem.luoguId}</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* 左侧：题目信息 */}
-          <div className="space-y-6">
-            <section className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">题目描述</h2>
+            {/* 题目描述 */}
+            <section>
+              <h2 className="mb-2 text-base font-semibold text-gray-900">题目描述</h2>
               <MdContent>{problem.description}</MdContent>
             </section>
 
-            <section className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">输入格式</h2>
+            <section>
+              <h2 className="mb-2 text-base font-semibold text-gray-900">输入格式</h2>
               <MdContent>{problem.inputFormat}</MdContent>
             </section>
 
-            <section className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">输出格式</h2>
+            <section>
+              <h2 className="mb-2 text-base font-semibold text-gray-900">输出格式</h2>
               <MdContent>{problem.outputFormat}</MdContent>
             </section>
 
             {samples.map((sample, i) => (
-              <section key={i} className="rounded-lg bg-white p-6 shadow">
-                <h2 className="mb-3 text-lg font-semibold text-gray-900">
+              <section key={i}>
+                <h2 className="mb-2 text-base font-semibold text-gray-900">
                   样例 {samples.length > 1 ? i + 1 : ""}
                 </h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-xs font-medium text-gray-500">输入</span>
@@ -330,7 +370,7 @@ export default function ProblemDetailPage() {
                         {copied === `in-${i}` ? "已复制" : "复制"}
                       </button>
                     </div>
-                    <pre className="rounded bg-gray-50 p-3 text-sm font-mono text-gray-800">
+                    <pre className="rounded bg-gray-50 p-2.5 text-sm font-mono text-gray-800">
                       {sample.input}
                     </pre>
                   </div>
@@ -344,7 +384,7 @@ export default function ProblemDetailPage() {
                         {copied === `out-${i}` ? "已复制" : "复制"}
                       </button>
                     </div>
-                    <pre className="rounded bg-gray-50 p-3 text-sm font-mono text-gray-800">
+                    <pre className="rounded bg-gray-50 p-2.5 text-sm font-mono text-gray-800">
                       {sample.output}
                     </pre>
                   </div>
@@ -352,107 +392,118 @@ export default function ProblemDetailPage() {
               </section>
             ))}
           </div>
+        </div>
 
-          {/* 右侧：代码编辑器 + 运行/判题 */}
-          <div className="space-y-6">
-            {/* 代码编辑器 */}
-            <div className="overflow-hidden rounded-lg bg-white shadow">
-              <div className="flex items-center justify-between border-b px-4 py-2">
-                <span className="text-sm font-medium text-gray-700">C++ 代码</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleRunSamples}
-                    disabled={busy}
-                    className="rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
-                  >
-                    {running ? "运行中..." : "运行样例"}
-                  </button>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={busy}
-                    className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {submitting ? "判题中..." : "提交"}
-                  </button>
-                </div>
-              </div>
-              <CodeEditor value={code} onChange={setCode} height="550px" />
-            </div>
+        {/* ===== 拖拽分隔线 ===== */}
+        <div
+          onMouseDown={startDrag}
+          className="w-1.5 flex-shrink-0 cursor-col-resize bg-gray-200 transition-colors hover:bg-blue-400 active:bg-blue-500"
+        />
 
-            {/* 自定义运行 */}
-            <div className="rounded-lg bg-white p-4 shadow">
+        {/* ===== 右面板：编辑器 + 底部 ===== */}
+        <div className="flex flex-1 flex-col overflow-hidden" style={{ minWidth: 0 }}>
+          {/* 编辑器头部：按钮栏 */}
+          <div className="flex items-center justify-between border-b bg-white px-4 py-2">
+            <span className="text-sm font-medium text-gray-700">C++ 代码</span>
+            <div className="flex gap-2">
               <button
-                onClick={() => setShowCustomInput(!showCustomInput)}
-                className="flex w-full items-center justify-between text-sm font-medium text-gray-700"
+                onClick={handleRunSamples}
+                disabled={busy}
+                className="rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
               >
-                <span>自定义输入运行</span>
-                <span className="text-xs text-gray-400">{showCustomInput ? "收起" : "展开"}</span>
+                {running ? "运行中..." : "运行样例"}
               </button>
-              {showCustomInput && (
-                <div className="mt-3">
-                  <textarea
-                    value={runInput}
-                    onChange={(e) => setRunInput(e.target.value)}
-                    className="w-full rounded border p-2 font-mono text-sm"
-                    rows={3}
-                    placeholder="输入测试数据..."
-                  />
-                  <button
-                    onClick={handleRunCustom}
-                    disabled={busy}
-                    className="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {running ? "运行中..." : "运行自定义输入"}
-                  </button>
-                </div>
-              )}
+              <button
+                onClick={handleSubmit}
+                disabled={busy}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting ? "判题中..." : "提交"}
+              </button>
+            </div>
+          </div>
+
+          {/* 编辑器（自适应填满） */}
+          <div className="flex-1 overflow-hidden">
+            <CodeEditor value={code} onChange={setCode} height="100%" />
+          </div>
+
+          {/* 底部区域：结果 / AI老师 / 自定义输入 */}
+          <div className="flex max-h-[40%] flex-col border-t bg-white">
+            {/* 标签页切换 */}
+            <div className="flex border-b text-sm">
+              <button
+                onClick={() => setBottomTab("results")}
+                className={`px-4 py-2 font-medium ${
+                  bottomTab === "results"
+                    ? "border-b-2 border-blue-600 text-blue-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                运行 / 判题
+              </button>
+              <button
+                onClick={() => setBottomTab("chat")}
+                className={`px-4 py-2 font-medium ${
+                  bottomTab === "chat"
+                    ? "border-b-2 border-blue-600 text-blue-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                AI 老师
+              </button>
             </div>
 
-            {/* 错误提示 */}
-            {(submitError || runError) && (
-              <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600">
-                {submitError || runError}
-              </div>
-            )}
+            {/* 标签页内容 */}
+            <div className="flex-1 overflow-y-auto">
+              {bottomTab === "results" && (
+                <div className="space-y-3 p-4">
+                  {/* 自定义运行 */}
+                  <div>
+                    <button
+                      onClick={() => setShowCustomInput(!showCustomInput)}
+                      className="flex items-center gap-2 text-sm font-medium text-gray-700"
+                    >
+                      <span>自定义输入运行</span>
+                      <span className="text-xs text-gray-400">{showCustomInput ? "收起" : "展开"}</span>
+                    </button>
+                    {showCustomInput && (
+                      <div className="mt-2">
+                        <textarea
+                          value={runInput}
+                          onChange={(e) => setRunInput(e.target.value)}
+                          className="w-full rounded border p-2 font-mono text-sm"
+                          rows={3}
+                          placeholder="输入测试数据..."
+                        />
+                        <button
+                          onClick={handleRunCustom}
+                          disabled={busy}
+                          className="mt-1 rounded-md border border-gray-300 px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {running ? "运行中..." : "运行自定义输入"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
 
-            {/* 结果标签页 */}
-            {(runResult || (overallStatus && judgeResults)) && (
-              <div className="rounded-lg bg-white shadow">
-                <div className="flex border-b">
-                  <button
-                    onClick={() => setActiveTab("run")}
-                    className={`px-4 py-2.5 text-sm font-medium ${
-                      activeTab === "run"
-                        ? "border-b-2 border-blue-600 text-blue-600"
-                        : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    运行结果
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("judge")}
-                    className={`px-4 py-2.5 text-sm font-medium ${
-                      activeTab === "judge"
-                        ? "border-b-2 border-blue-600 text-blue-600"
-                        : "text-gray-500 hover:text-gray-700"
-                    }`}
-                  >
-                    判题结果
-                  </button>
-                </div>
+                  {/* 错误提示 */}
+                  {(submitError || runError) && (
+                    <div className="rounded bg-red-50 p-3 text-sm text-red-600">
+                      {submitError || runError}
+                    </div>
+                  )}
 
-                <div className="p-4">
                   {/* 运行结果 */}
-                  {activeTab === "run" && runResult && (
-                    <div className="space-y-3">
-                      {/* 样例运行模式 */}
+                  {runResult && (
+                    <div className="space-y-2">
                       {runResult.mode === "samples" && runResult.results && (
                         <>
                           {(() => {
                             const allAC = runResult.results.every((r) => r.status === "AC");
                             return (
                               <div className="flex items-center gap-3">
-                                <span className={`text-lg font-bold ${allAC ? "text-green-600" : "text-red-600"}`}>
+                                <span className={`font-bold ${allAC ? "text-green-600" : "text-red-600"}`}>
                                   {allAC ? "样例全部通过" : "样例未通过"}
                                 </span>
                                 <span className="text-sm text-gray-400">
@@ -462,37 +513,27 @@ export default function ProblemDetailPage() {
                             );
                           })()}
                           {runResult.results.map((r, i) => (
-                            <div key={i} className="rounded border p-3">
-                              <div className="mb-2 flex items-center gap-3">
-                                <span className="text-sm font-medium text-gray-500">
-                                  样例 {i + 1}
-                                </span>
+                            <div key={i} className="rounded border p-2">
+                              <div className="mb-1 flex items-center gap-3">
+                                <span className="text-sm font-medium text-gray-500">样例 {i + 1}</span>
                                 <span className={`text-sm font-bold ${STATUS_COLORS[r.status] || "text-gray-600"}`}>
                                   {STATUS_TEXT[r.status] || r.status}
                                 </span>
-                                {r.time && (
-                                  <span className="text-xs text-gray-400">
-                                    {(parseFloat(r.time) * 1000).toFixed(0)}ms
-                                  </span>
-                                )}
-                                {r.memory && (
-                                  <span className="text-xs text-gray-400">{r.memory}KB</span>
-                                )}
+                                {r.time && <span className="text-xs text-gray-400">{(parseFloat(r.time) * 1000).toFixed(0)}ms</span>}
+                                {r.memory && <span className="text-xs text-gray-400">{r.memory}KB</span>}
                               </div>
                               {r.error && (
-                                <pre className="mb-2 max-h-32 overflow-auto rounded bg-red-50 p-2 text-xs font-mono text-red-700">
-                                  {r.error}
-                                </pre>
+                                <pre className="mb-1 max-h-24 overflow-auto rounded bg-red-50 p-2 text-xs font-mono text-red-700">{r.error}</pre>
                               )}
                               {r.status !== "AC" && r.status !== "CE" && (
-                                <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+                                <div className="grid grid-cols-2 gap-2 text-xs">
                                   <div>
-                                    <div className="mb-1 font-medium text-gray-500">期望输出</div>
-                                    <pre className="rounded bg-gray-50 p-2 font-mono">{r.expectedOutput}</pre>
+                                    <div className="mb-0.5 font-medium text-gray-500">期望输出</div>
+                                    <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.expectedOutput}</pre>
                                   </div>
                                   <div>
-                                    <div className="mb-1 font-medium text-gray-500">实际输出</div>
-                                    <pre className="rounded bg-gray-50 p-2 font-mono">{r.actualOutput || "(无输出)"}</pre>
+                                    <div className="mb-0.5 font-medium text-gray-500">实际输出</div>
+                                    <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.actualOutput || "(无输出)"}</pre>
                                   </div>
                                 </div>
                               )}
@@ -501,7 +542,6 @@ export default function ProblemDetailPage() {
                         </>
                       )}
 
-                      {/* 自定义输入模式 */}
                       {runResult.mode === "custom" && (
                         <>
                           <div className="flex items-center gap-3">
@@ -512,37 +552,25 @@ export default function ProblemDetailPage() {
                             }`}>
                               {runResult.status}
                             </span>
-                            {runResult.time && (
-                              <span className="text-xs text-gray-400">
-                                {(parseFloat(runResult.time) * 1000).toFixed(0)}ms
-                              </span>
-                            )}
-                            {runResult.memory && (
-                              <span className="text-xs text-gray-400">{runResult.memory}KB</span>
-                            )}
+                            {runResult.time && <span className="text-xs text-gray-400">{(parseFloat(runResult.time) * 1000).toFixed(0)}ms</span>}
+                            {runResult.memory && <span className="text-xs text-gray-400">{runResult.memory}KB</span>}
                           </div>
                           {runResult.compileOutput && (
                             <div>
-                              <div className="mb-1 text-xs font-medium text-gray-500">编译信息</div>
-                              <pre className="max-h-40 overflow-auto rounded bg-red-50 p-3 text-xs font-mono text-red-700">
-                                {runResult.compileOutput}
-                              </pre>
+                              <div className="mb-0.5 text-xs font-medium text-gray-500">编译信息</div>
+                              <pre className="max-h-32 overflow-auto rounded bg-red-50 p-2 text-xs font-mono text-red-700">{runResult.compileOutput}</pre>
                             </div>
                           )}
                           {runResult.stdout && (
                             <div>
-                              <div className="mb-1 text-xs font-medium text-gray-500">标准输出</div>
-                              <pre className="max-h-40 overflow-auto rounded bg-gray-50 p-3 text-sm font-mono text-gray-800">
-                                {runResult.stdout}
-                              </pre>
+                              <div className="mb-0.5 text-xs font-medium text-gray-500">标准输出</div>
+                              <pre className="max-h-32 overflow-auto rounded bg-gray-50 p-2 text-sm font-mono text-gray-800">{runResult.stdout}</pre>
                             </div>
                           )}
                           {runResult.stderr && (
                             <div>
-                              <div className="mb-1 text-xs font-medium text-gray-500">标准错误</div>
-                              <pre className="max-h-40 overflow-auto rounded bg-red-50 p-3 text-xs font-mono text-red-700">
-                                {runResult.stderr}
-                              </pre>
+                              <div className="mb-0.5 text-xs font-medium text-gray-500">标准错误</div>
+                              <pre className="max-h-32 overflow-auto rounded bg-red-50 p-2 text-xs font-mono text-red-700">{runResult.stderr}</pre>
                             </div>
                           )}
                           {!runResult.stdout && !runResult.stderr && !runResult.compileOutput && (
@@ -554,44 +582,32 @@ export default function ProblemDetailPage() {
                   )}
 
                   {/* 判题结果 */}
-                  {activeTab === "judge" && overallStatus && judgeResults && (
-                    <div className="space-y-3">
+                  {overallStatus && judgeResults && (
+                    <div className="space-y-2">
                       <div className="flex items-center gap-3">
-                        <span
-                          className={`text-lg font-bold ${STATUS_COLORS[overallStatus] || "text-gray-600"}`}
-                        >
+                        <span className={`font-bold ${STATUS_COLORS[overallStatus] || "text-gray-600"}`}>
                           {STATUS_TEXT[overallStatus] || overallStatus}
                         </span>
                       </div>
                       {judgeResults.map((r, i) => (
-                        <div key={i} className="rounded border p-3">
-                          <div className="mb-2 flex items-center gap-3">
-                            <span className="text-sm font-medium text-gray-500">
-                              #{i + 1}
-                            </span>
-                            <span
-                              className={`text-sm font-bold ${STATUS_COLORS[r.status] || "text-gray-600"}`}
-                            >
+                        <div key={i} className="rounded border p-2">
+                          <div className="mb-1 flex items-center gap-3">
+                            <span className="text-sm font-medium text-gray-500">#{i + 1}</span>
+                            <span className={`text-sm font-bold ${STATUS_COLORS[r.status] || "text-gray-600"}`}>
                               {STATUS_TEXT[r.status] || r.status}
                             </span>
-                            {r.time && (
-                              <span className="text-xs text-gray-400">
-                                {(parseFloat(r.time) * 1000).toFixed(0)}ms
-                              </span>
-                            )}
-                            {r.memory && (
-                              <span className="text-xs text-gray-400">{r.memory}KB</span>
-                            )}
+                            {r.time && <span className="text-xs text-gray-400">{(parseFloat(r.time) * 1000).toFixed(0)}ms</span>}
+                            {r.memory && <span className="text-xs text-gray-400">{r.memory}KB</span>}
                           </div>
                           {r.status !== "AC" && (
-                            <div className="grid grid-cols-1 gap-2 text-xs md:grid-cols-2">
+                            <div className="grid grid-cols-2 gap-2 text-xs">
                               <div>
-                                <div className="mb-1 font-medium text-gray-500">期望输出</div>
-                                <pre className="rounded bg-gray-50 p-2 font-mono">{r.expectedOutput}</pre>
+                                <div className="mb-0.5 font-medium text-gray-500">期望输出</div>
+                                <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.expectedOutput}</pre>
                               </div>
                               <div>
-                                <div className="mb-1 font-medium text-gray-500">实际输出</div>
-                                <pre className="rounded bg-gray-50 p-2 font-mono">{r.actualOutput || "(无输出)"}</pre>
+                                <div className="mb-0.5 font-medium text-gray-500">实际输出</div>
+                                <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.actualOutput || "(无输出)"}</pre>
                               </div>
                             </div>
                           )}
@@ -599,48 +615,41 @@ export default function ProblemDetailPage() {
                       ))}
                     </div>
                   )}
-                </div>
-              </div>
-            )}
 
-            {/* 提交记录 */}
-            {submissions.length > 0 && (
-              <div className="rounded-lg bg-white p-6 shadow">
-                <h2 className="mb-3 text-lg font-semibold text-gray-900">提交记录</h2>
-                <div className="space-y-2">
-                  {submissions.map((s) => (
-                    <div
-                      key={s.id}
-                      className="flex items-center justify-between rounded border px-3 py-2 text-sm"
-                    >
-                      <span
-                        className={`font-bold ${STATUS_COLORS[s.status] || "text-gray-600"}`}
-                      >
-                        {STATUS_TEXT[s.status] || s.status}
-                      </span>
-                      <div className="flex gap-3 text-xs text-gray-400">
-                        {s.timeUsed != null && <span>{s.timeUsed}ms</span>}
-                        {s.memoryUsed != null && <span>{s.memoryUsed}KB</span>}
-                        <span>
-                          {new Date(s.createdAt).toLocaleString("zh-CN", {
-                            month: "2-digit",
-                            day: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
+                  {/* 提交记录 */}
+                  {submissions.length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold text-gray-900">提交记录</h3>
+                      <div className="space-y-1">
+                        {submissions.map((s) => (
+                          <div key={s.id} className="flex items-center justify-between rounded border px-3 py-1.5 text-sm">
+                            <span className={`font-bold ${STATUS_COLORS[s.status] || "text-gray-600"}`}>
+                              {STATUS_TEXT[s.status] || s.status}
+                            </span>
+                            <div className="flex gap-3 text-xs text-gray-400">
+                              {s.timeUsed != null && <span>{s.timeUsed}ms</span>}
+                              {s.memoryUsed != null && <span>{s.memoryUsed}KB</span>}
+                              <span>
+                                {new Date(s.createdAt).toLocaleString("zh-CN", {
+                                  month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* AI 老师 */}
-            <ChatPanel problemId={parseInt(id as string)} code={code} />
+              {bottomTab === "chat" && (
+                <ChatPanel problemId={parseInt(id as string)} code={code} />
+              )}
+            </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
