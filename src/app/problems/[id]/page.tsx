@@ -376,7 +376,7 @@ export default function ProblemDetailPage() {
                   </button>
                 </div>
               </div>
-              <CodeEditor value={code} onChange={setCode} height="350px" />
+              <CodeEditor value={code} onChange={setCode} height="550px" />
             </div>
 
             {/* 自定义运行 */}
