@@ -18,6 +18,24 @@ const CATEGORIES = [
   { value: "step_guide", label: "分步引导" },
 ];
 
+const DEFAULT_SYSTEM_PROMPT = `你是GESP.AI的AI编程老师，帮助学生学习C++和GESP考试。
+
+核心规则：
+1. 绝对不能给出完整的解题代码
+2. 绝对不能直接说出最终答案
+3. 用引导式提问帮助学生自己想出解法
+4. 可以解释概念、给思路方向、指出代码错误
+5. 语言简洁，适合小学到初中学生理解
+6. 如果学生直接要答案，温和地拒绝并引导他思考
+
+当前题目信息：
+- 标题：{{problem_title}}
+- 描述：{{problem_description}}
+- 输入格式：{{input_format}}
+- 输出格式：{{output_format}}
+
+{{user_code_section}}`;
+
 export default function AdminPromptsPage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,10 +141,42 @@ export default function AdminPromptsPage() {
           </div>
         )}
 
+        {/* 默认提示词提示：当没有 system 类别提示词时显示 */}
+        {!loading && !prompts.some((p) => p.category === "system") && (
+          <div className="mb-6 rounded-lg bg-amber-50 border border-amber-200 p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-amber-800">AI 老师默认提示词</span>
+                <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-600">内置</span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditing(null);
+                  setForm({
+                    name: "AI老师系统提示词",
+                    category: "system",
+                    content: DEFAULT_SYSTEM_PROMPT,
+                    variables: JSON.stringify(["problem_title", "problem_description", "input_format", "output_format", "user_code_section"]),
+                  });
+                  setShowForm(true);
+                  setError("");
+                }}
+                className="rounded-md border border-amber-300 bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-200"
+              >
+                导入为可编辑
+              </button>
+            </div>
+            <p className="mb-2 text-xs text-amber-600">当前未在数据库中配置系统提示词，AI 老师正在使用以下内置默认提示词：</p>
+            <pre className="max-h-48 overflow-auto rounded bg-white p-3 text-xs font-mono text-gray-600 border border-amber-100">
+              {DEFAULT_SYSTEM_PROMPT}
+            </pre>
+          </div>
+        )}
+
         {loading ? (
           <div className="py-12 text-center text-gray-500">加载中...</div>
         ) : prompts.length === 0 ? (
-          <div className="py-12 text-center text-gray-400">暂无提示词，AI 老师将使用默认提示词</div>
+          <div className="py-8 text-center text-gray-400">暂无自定义提示词</div>
         ) : (
           <div className="space-y-4">
             {prompts.map((p) => (
