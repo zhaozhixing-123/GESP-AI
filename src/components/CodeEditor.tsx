@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 import Editor from "@monaco-editor/react";
 
 interface CodeEditorProps {
@@ -22,19 +22,33 @@ export { DEFAULT_CODE };
 export default function CodeEditor({ value, onChange, height = "400px" }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
 
+  const handleMount = useCallback((editor: any) => {
+    editorRef.current = editor;
+
+    // 默认关闭滚轮
+    editor.updateOptions({ scrollbar: { handleMouseWheel: false } });
+
+    // 获取 Monaco 的 DOM 容器
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      domNode.addEventListener("mouseenter", () => {
+        editor.updateOptions({ scrollbar: { handleMouseWheel: true } });
+      });
+      domNode.addEventListener("mouseleave", () => {
+        editor.updateOptions({ scrollbar: { handleMouseWheel: false } });
+      });
+    }
+  }, []);
+
   return (
-    <div
-      onMouseEnter={() => editorRef.current?.updateOptions({ scrollbar: { handleMouseWheel: true } })}
-      onMouseLeave={() => editorRef.current?.updateOptions({ scrollbar: { handleMouseWheel: false } })}
-      style={{ height }}
-    >
+    <div style={{ height }}>
       <Editor
         height="100%"
         language="cpp"
         theme="vs-dark"
         value={value}
         onChange={(v) => onChange(v || "")}
-        onMount={(editor) => { editorRef.current = editor; }}
+        onMount={handleMount}
         options={{
           fontSize: 14,
           minimap: { enabled: false },
@@ -42,7 +56,6 @@ export default function CodeEditor({ value, onChange, height = "400px" }: CodeEd
           wordWrap: "on",
           tabSize: 4,
           automaticLayout: true,
-          scrollbar: { handleMouseWheel: false },
         }}
       />
     </div>
