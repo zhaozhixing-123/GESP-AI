@@ -1,28 +1,39 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 
-const NOTIFY_INTERVAL = 2 * 60 * 1000; // 2 分钟
+const NOTIFY_THRESHOLD = 2 * 60 * 1000; // 分心累计 2 分钟才通知
 
-export default function FocusTracker() {
-  const focusStart = useRef(Date.now());
+interface FocusTime {
+  focusSeconds: number;
+  distractSeconds: number;
+}
+
+const FocusContext = createContext<FocusTime>({ focusSeconds: 0, distractSeconds: 0 });
+
+export function useFocusTime() {
+  return useContext(FocusContext);
+}
+
+export function FocusProvider({ children }: { children: React.ReactNode }) {
+  const [time, setTime] = useState<FocusTime>({ focusSeconds: 0, distractSeconds: 0 });
+
+  const startTime = useRef(Date.now());
   const distractStart = useRef<number | null>(null);
   const distractTotal = useRef(0);
-  const lastNotifiedAt = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notifiedThreshold = useRef(0); // 已通知到的分心阈值（ms）
   const lastWidth = useRef(typeof window !== "undefined" ? window.innerWidth : 0);
 
   const getToken = useCallback(() => {
     return typeof window !== "undefined" ? localStorage.getItem("token") : null;
   }, []);
 
-  const sendNotify = useCallback(async () => {
+  const sendNotify = useCallback(async (focusMs: number, distractMs: number) => {
     const token = getToken();
     if (!token) return;
 
-    const focusMs = Date.now() - focusStart.current - distractTotal.current;
     const focusMinutes = Math.max(0, Math.round(focusMs / 60000));
-    const distractMinutes = Math.round(distractTotal.current / 60000);
+    const distractMinutes = Math.round(distractMs / 60000);
 
     try {
       await fetch("/api/focus/notify", {
@@ -49,49 +60,46 @@ export default function FocusTracker() {
     }
   }, []);
 
-  // 每秒检查是否需要通知
+  // 每秒 tick：更新显示 + 检查是否需要通知
   const tick = useCallback(() => {
-    // 如果正在分心中，计算实时总分心时间
-    let total = distractTotal.current;
+    const now = Date.now();
+    let currentDistract = distractTotal.current;
     if (distractStart.current !== null) {
-      total += Date.now() - distractStart.current;
+      currentDistract += now - distractStart.current;
     }
+    const totalElapsed = now - startTime.current;
+    const focusMs = Math.max(0, totalElapsed - currentDistract);
 
-    // 每 2 分钟通知一次
-    if (total - lastNotifiedAt.current >= NOTIFY_INTERVAL) {
-      lastNotifiedAt.current = total;
-      sendNotify();
+    setTime({
+      focusSeconds: Math.floor(focusMs / 1000),
+      distractSeconds: Math.floor(currentDistract / 1000),
+    });
+
+    // 分心累计每超过 2 分钟通知一次
+    if (currentDistract >= notifiedThreshold.current + NOTIFY_THRESHOLD) {
+      notifiedThreshold.current += NOTIFY_THRESHOLD;
+      sendNotify(focusMs, currentDistract);
     }
   }, [sendNotify]);
 
   useEffect(() => {
-    // 未登录不激活
     if (!getToken()) return;
 
-    // ===== 分心检测 =====
     function handleVisibility() {
       if (document.hidden) markDistracted();
       else markFocused();
     }
-
     function handleBlur() { markDistracted(); }
     function handleFocus() { markFocused(); }
 
-    // ===== 防作弊 =====
-    function handleContextMenu(e: Event) {
-      e.preventDefault();
-    }
-
+    // 防作弊
+    function handleContextMenu(e: Event) { e.preventDefault(); }
     function handleKeyDown(e: KeyboardEvent) {
-      // F12
       if (e.key === "F12") { e.preventDefault(); return; }
-      // Ctrl+Shift+I/J/C
       if (e.ctrlKey && e.shiftKey && ["I", "J", "C"].includes(e.key.toUpperCase())) {
         e.preventDefault();
-        return;
       }
     }
-
     function handleResize() {
       const currentWidth = window.innerWidth;
       if (currentWidth < lastWidth.current - 200) {
@@ -100,7 +108,6 @@ export default function FocusTracker() {
       lastWidth.current = currentWidth;
     }
 
-    // 绑定事件
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
@@ -108,8 +115,7 @@ export default function FocusTracker() {
     document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", handleResize);
 
-    // 启动定时器
-    timerRef.current = setInterval(tick, 1000);
+    const timer = setInterval(tick, 1000);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
@@ -118,9 +124,13 @@ export default function FocusTracker() {
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("resize", handleResize);
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearInterval(timer);
     };
   }, [getToken, markDistracted, markFocused, tick]);
 
-  return null; // 无 UI
+  return (
+    <FocusContext.Provider value={time}>
+      {children}
+    </FocusContext.Provider>
+  );
 }

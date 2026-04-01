@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useFocusTime } from "./FocusTracker";
 
 interface User {
   id: number;
@@ -10,9 +11,19 @@ interface User {
   role: string;
 }
 
+function formatTime(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export default function Navbar() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const { focusSeconds, distractSeconds } = useFocusTime();
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
@@ -26,6 +37,8 @@ export default function Navbar() {
     localStorage.removeItem("user");
     router.push("/");
   }
+
+  const distractWarning = distractSeconds >= 120;
 
   return (
     <nav className="border-b border-gray-200 bg-white">
@@ -73,6 +86,14 @@ export default function Navbar() {
         <div className="flex items-center gap-4">
           {user && (
             <>
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <span className="text-green-600">
+                  专注 {formatTime(focusSeconds)}
+                </span>
+                <span className={distractWarning ? "text-red-500 font-bold" : "text-gray-400"}>
+                  分心 {formatTime(distractSeconds)}
+                </span>
+              </div>
               <span className="text-sm text-gray-600">
                 {user.username}
                 {user.role === "admin" && (
