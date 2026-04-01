@@ -46,6 +46,12 @@ export default function Navbar() {
           >
             错题本
           </Link>
+          <Link
+            href="/settings/parent"
+            className="text-sm text-gray-600 hover:text-gray-900"
+          >
+            家长设置
+          </Link>
           {user?.role === "admin" && (
             <>
               <Link

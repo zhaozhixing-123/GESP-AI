@@ -8,14 +8,16 @@ datasource db {
 }
 
 model User {
-  id           Int          @id @default(autoincrement())
-  username     String       @unique
-  passwordHash String
-  role         String       @default("user") // admin | user
-  createdAt    DateTime     @default(now())
-  submissions  Submission[]
-  wrongBooks   WrongBook[]
-  chatHistory  ChatHistory[]
+  id             Int          @id @default(autoincrement())
+  username       String       @unique
+  passwordHash   String
+  role           String       @default("user") // admin | user
+  createdAt      DateTime     @default(now())
+  parentPassword String?      // 家长密码（bcrypt hash）
+  feishuWebhook  String?      // 飞书 Webhook URL
+  submissions    Submission[]
+  wrongBooks     WrongBook[]
+  chatHistory    ChatHistory[]
 }
 
 model Problem {
