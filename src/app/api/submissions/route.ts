@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { judgeCode, mapStatus, getErrorMessage } from "@/lib/judge0";
+import { judgeAll, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
 
 export async function POST(request: NextRequest) {
@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "该题目暂无测试数据" }, { status: 400 });
     }
 
-    // 对每个测试点运行 Judge0
+    // 批量提交所有测试点，并行等待结果
+    const judge0Results = await judgeAll(code, allTests.map((t) => t.input));
+
     const results: Array<{
       input: string;
       expectedOutput: string;
@@ -56,20 +58,32 @@ export async function POST(request: NextRequest) {
     let maxMemory = 0;
 
     for (let idx = 0; idx < allTests.length; idx++) {
-      const sample = allTests[idx];
-      const judge0Result = await judgeCode(code, sample.input);
+      const judge0Result = judge0Results[idx];
       const status = mapStatus(judge0Result);
       const actualOutput = normalizeOutput(judge0Result.stdout || "");
-      const expectedOutput = normalizeOutput(sample.output);
+      const expectedOutput = normalizeOutput(allTests[idx].output);
 
       // Judge0 "AC" 只表示程序正常运行，需要对比输出判断真正的 AC/WA
       let finalStatus = status;
       if (status === "AC") {
         finalStatus = actualOutput === expectedOutput ? "AC" : "WA";
       }
+      // CE 时用错误信息替换实际输出
+      if (finalStatus === "CE") {
+        results.push({
+          input: allTests[idx].input,
+          expectedOutput,
+          actualOutput: getErrorMessage(judge0Result),
+          status: finalStatus,
+          time: judge0Result.time,
+          memory: judge0Result.memory,
+        });
+        overallStatus = "CE";
+        break;
+      }
 
       results.push({
-        input: sample.input,
+        input: allTests[idx].input,
         expectedOutput,
         actualOutput,
         status: finalStatus,
@@ -80,15 +94,8 @@ export async function POST(request: NextRequest) {
       if (judge0Result.time) totalTime += parseFloat(judge0Result.time) * 1000;
       if (judge0Result.memory) maxMemory = Math.max(maxMemory, judge0Result.memory);
 
-      // 如果不是 AC，整体状态取第一个非 AC 状态
       if (finalStatus !== "AC" && overallStatus === "AC") {
         overallStatus = finalStatus;
-      }
-
-      // CE 不需要继续测试
-      if (finalStatus === "CE") {
-        results[results.length - 1].actualOutput = getErrorMessage(judge0Result);
-        break;
       }
     }
 

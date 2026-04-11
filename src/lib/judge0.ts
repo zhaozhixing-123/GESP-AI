@@ -100,24 +100,90 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** 提交代码并等待结果 */
-export async function judgeCode(
+/** 批量提交多个测试点，返回 token 列表 */
+export async function submitBatch(
   sourceCode: string,
-  stdin: string
-): Promise<Judge0Result> {
-  const token = await submitToJudge0(sourceCode, stdin);
+  inputs: string[]
+): Promise<string[]> {
+  const res = await fetch(`${API_URL}/submissions/batch?base64_encoded=true`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      submissions: inputs.map((stdin) => ({
+        language_id: CPP_LANGUAGE_ID,
+        source_code: toBase64(sourceCode),
+        stdin: toBase64(stdin),
+        cpu_time_limit: CPU_TIME_LIMIT,
+        memory_limit: MEMORY_LIMIT,
+      })),
+    }),
+  });
 
-  // 轮询等待结果，最多 30 秒
-  for (let i = 0; i < 15; i++) {
-    await sleep(2000);
-    const result = await getJudge0Result(token);
-    // status.id 1=In Queue, 2=Processing
-    if (result.status.id > 2) {
-      return result;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Judge0 batch submit failed: ${res.status} ${text}`);
+  }
+
+  const data: { token: string }[] = await res.json();
+  return data.map((d) => d.token);
+}
+
+/** 批量查询多个 token 的结果 */
+export async function getBatchResults(tokens: string[]): Promise<Judge0Result[]> {
+  const res = await fetch(
+    `${API_URL}/submissions/batch?tokens=${tokens.join(",")}&base64_encoded=true&fields=token,status,stdout,stderr,compile_output,message,time,memory`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Judge0 batch get failed: ${res.status} ${text}`);
+  }
+
+  const data: { submissions: any[] } = await res.json();
+  return data.submissions.map((raw) => ({
+    ...raw,
+    stdout: fromBase64(raw.stdout),
+    stderr: fromBase64(raw.stderr),
+    compile_output: fromBase64(raw.compile_output),
+    message: fromBase64(raw.message),
+  }));
+}
+
+/**
+ * 批量判题：一次提交所有测试点，并行等待所有结果。
+ * 比逐个串行调用快 N 倍。
+ */
+export async function judgeAll(
+  sourceCode: string,
+  inputs: string[]
+): Promise<Judge0Result[]> {
+  if (inputs.length === 0) return [];
+
+  const tokens = await submitBatch(sourceCode, inputs);
+
+  // 首次 500ms 后查，后续每 1000ms 查一次，最多等 30 秒
+  const delays = [500, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+                  1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
+                  1000, 1000, 1000, 1000, 1000];
+  for (const delay of delays) {
+    await sleep(delay);
+    const results = await getBatchResults(tokens);
+    if (results.every((r) => r.status.id > 2)) {
+      return results;
     }
   }
 
   throw new Error("判题超时，请稍后重试");
+}
+
+/** 提交代码并等待结果（单测试点，保留供自定义输入使用） */
+export async function judgeCode(
+  sourceCode: string,
+  stdin: string
+): Promise<Judge0Result> {
+  const [result] = await judgeAll(sourceCode, [stdin]);
+  return result;
 }
 
 /** 将 Judge0 result 映射到我们的状态码 */

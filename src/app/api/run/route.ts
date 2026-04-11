@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { judgeCode, mapStatus, getErrorMessage } from "@/lib/judge0";
+import { judgeAll, judgeCode, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
 
 export async function POST(request: NextRequest) {
@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
         return Response.json({ error: "该题目暂无样例" }, { status: 400 });
       }
 
+      // 批量提交所有样例，并行等待结果
+      const judge0Results = await judgeAll(code, samples.map((s) => s.input));
+
       const results: Array<{
         input: string;
         expectedOutput: string;
@@ -42,21 +45,20 @@ export async function POST(request: NextRequest) {
         error: string;
       }> = [];
 
-      for (const sample of samples) {
-        const result = await judgeCode(code, sample.input);
+      for (let i = 0; i < samples.length; i++) {
+        const result = judge0Results[i];
         const status = mapStatus(result);
         const actualOutput = normalizeOutput(result.stdout || "");
-        const expectedOutput = normalizeOutput(sample.output);
+        const expectedOutput = normalizeOutput(samples[i].output);
         const error = getErrorMessage(result);
 
-        // AC 只表示程序正常运行，需要对比输出
         let finalStatus = status;
         if (status === "AC") {
           finalStatus = actualOutput === expectedOutput ? "AC" : "WA";
         }
 
         results.push({
-          input: sample.input,
+          input: samples[i].input,
           expectedOutput,
           actualOutput,
           status: finalStatus,
@@ -65,7 +67,6 @@ export async function POST(request: NextRequest) {
           error: finalStatus === "AC" ? "" : error,
         });
 
-        // CE 不需要继续
         if (finalStatus === "CE") break;
       }
 
