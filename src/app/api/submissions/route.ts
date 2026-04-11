@@ -105,6 +105,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // 非 AC 自动加入错题本（upsert 避免重复）
+    if (overallStatus !== "AC") {
+      await prisma.wrongBook.upsert({
+        where: {
+          userId_problemId: { userId: user.userId, problemId: parseInt(problemId) },
+        },
+        update: {},
+        create: { userId: user.userId, problemId: parseInt(problemId) },
+      });
+    }
+
     return Response.json({ submission, results });
   } catch (e: any) {
     console.error("Submission error:", e);

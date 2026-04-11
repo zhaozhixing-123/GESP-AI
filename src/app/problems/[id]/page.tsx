@@ -119,6 +119,10 @@ export default function ProblemDetailPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [submitError, setSubmitError] = useState("");
 
+  // 错题本状态
+  const [inWrongBook, setInWrongBook] = useState(false);
+  const [wrongBookLoading, setWrongBookLoading] = useState(false);
+
   // 运行状态
   const [running, setRunning] = useState(false);
   const [runInput, setRunInput] = useState("");
@@ -156,6 +160,38 @@ export default function ProblemDetailPage() {
       .then((data) => setSubmissions(data.submissions || []))
       .catch(() => {});
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    fetch(`/api/wrongbook/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setInWrongBook(data.inWrongBook ?? false))
+      .catch(() => {});
+  }, [id]);
+
+  async function handleToggleWrongBook() {
+    if (wrongBookLoading) return;
+    setWrongBookLoading(true);
+    try {
+      if (inWrongBook) {
+        await fetch(`/api/wrongbook/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setInWrongBook(false);
+      } else {
+        await fetch("/api/wrongbook", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ problemId: parseInt(id as string) }),
+        });
+        setInWrongBook(true);
+      }
+    } catch {}
+    setWrongBookLoading(false);
+  }
 
   function copyToClipboard(text: string, label: string) {
     navigator.clipboard.writeText(text);
@@ -406,6 +442,18 @@ export default function ProblemDetailPage() {
           <div className="flex items-center justify-between border-b bg-white px-4 py-2">
             <span className="text-sm font-medium text-gray-700">C++ 代码</span>
             <div className="flex gap-2">
+              <button
+                onClick={handleToggleWrongBook}
+                disabled={wrongBookLoading}
+                title={inWrongBook ? "从错题本移除" : "加入错题本"}
+                className={`rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+                  inWrongBook
+                    ? "border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                    : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {inWrongBook ? "★ 错题本" : "☆ 错题本"}
+              </button>
               <button
                 onClick={handleRunSamples}
                 disabled={busy}

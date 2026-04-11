@@ -14,9 +14,10 @@ interface Message {
 interface ChatPanelProps {
   problemId: number;
   code: string;
+  initialMessage?: string;
 }
 
-export default function ChatPanel({ problemId, code }: ChatPanelProps) {
+export default function ChatPanel({ problemId, code, initialMessage }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -24,6 +25,7 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
   const [streaming, setStreaming] = useState("");
   const [model, setModel] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const initialSentRef = useRef(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -35,7 +37,13 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
       });
       if (res.ok) {
         const data = await res.json();
-        setMessages(data.messages || []);
+        const history = data.messages || [];
+        setMessages(history);
+        // 聊天记录为空且有 initialMessage 时，自动触发一次分析
+        if (history.length === 0 && initialMessage && !initialSentRef.current) {
+          initialSentRef.current = true;
+          sendMessage(initialMessage);
+        }
       }
     }
     loadHistory();
@@ -46,14 +54,12 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streaming]);
 
-  async function handleSend() {
-    if (!input.trim() || sending) return;
+  async function sendMessage(text: string) {
+    if (!text.trim() || sending) return;
 
-    const userMsg = input.trim();
-    setInput("");
     setSending(true);
     setStreaming("");
-    setMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
 
     try {
       const res = await fetch("/api/chat", {
@@ -64,7 +70,7 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
         },
         body: JSON.stringify({
           problemId,
-          message: userMsg,
+          message: text,
           code: includeCode ? code : undefined,
         }),
       });
@@ -119,6 +125,13 @@ export default function ChatPanel({ problemId, code }: ChatPanelProps) {
     }
 
     setSending(false);
+  }
+
+  async function handleSend() {
+    if (!input.trim() || sending) return;
+    const userMsg = input.trim();
+    setInput("");
+    await sendMessage(userMsg);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
