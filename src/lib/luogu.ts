@@ -97,26 +97,33 @@ export async function fetchLuoguProblem(
     output: String(s[1] ?? s.output ?? "").trim(),
   }));
 
-  // 调试：打印原始标签相关字段
-  console.log(`[luogu-debug] ${p.pid} p.tags:`, JSON.stringify(p.tags));
-  console.log(`[luogu-debug] ${p.pid} raw.tags:`, JSON.stringify(raw.tags)?.slice(0, 200));
-  const rawKeys = Object.keys(raw).filter(k => k.toLowerCase().includes("tag"));
-  if (rawKeys.length) console.log(`[luogu-debug] ${p.pid} raw tag-keys:`, rawKeys);
+  // 提取算法标签
+  // p.tags = tag ID 数组 [6, 160, 338]
+  // 字典可能在 data.tags（顶层数组）或 raw.tags（对象）
+  const tagIds: number[] = Array.isArray(p.tags) && typeof p.tags[0] === "number" ? p.tags : [];
+  const tagDict: Record<string, string> = {};
 
-  // 提取算法标签（兼容两种洛谷结构）
-  // 格式A: p.tags = [14, 20]，raw.tags = { "14": { name: "递推/递归" } }
-  // 格式B: p.tags = [{ id: 14, name: "递推/递归" }, ...]
-  const rawTags: any[] = p.tags || [];
-  let tagNames: string[];
-  if (rawTags.length > 0 && typeof rawTags[0] === "object") {
-    tagNames = rawTags.map((t: any) => t.name ?? t.title).filter(Boolean);
-  } else {
-    const tagDict: Record<string, { name: string }> = raw.tags || {};
-    tagNames = (rawTags as number[])
-      .map((id) => tagDict[String(id)]?.name)
-      .filter((name): name is string => !!name);
+  // 格式A: data.tags 是顶层数组 [{id, name}, ...]
+  const topTags = data.tags;
+  if (Array.isArray(topTags)) {
+    for (const t of topTags) {
+      if (t.id != null && t.name) tagDict[String(t.id)] = t.name;
+    }
   }
-  console.log(`[luogu] ${p.pid} tags:`, tagNames);
+  // 格式B: raw.tags 是字典对象 { "14": { name: "递推" } }
+  const rawTagsObj = raw.tags;
+  if (rawTagsObj && typeof rawTagsObj === "object" && !Array.isArray(rawTagsObj)) {
+    for (const [k, v] of Object.entries(rawTagsObj as Record<string, any>)) {
+      tagDict[k] = v?.name ?? String(v);
+    }
+  }
+  // 格式C: p.tags 直接是对象数组 [{id, name}, ...]
+  const tagNames: string[] =
+    Array.isArray(p.tags) && p.tags.length > 0 && typeof p.tags[0] === "object"
+      ? (p.tags as any[]).map((t) => t.name ?? t.title).filter(Boolean)
+      : tagIds.map((id) => tagDict[String(id)]).filter(Boolean);
+
+  console.log(`[luogu] ${p.pid} tagIds:`, tagIds, "resolved:", tagNames);
 
   return {
     luoguId: p.pid,
