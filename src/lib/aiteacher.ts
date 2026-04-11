@@ -6,6 +6,25 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const AI_TEACHER_MODEL = "claude-opus-4-6";
 export const AI_TEACHER_MODEL_DISPLAY = "Claude Opus 4.6";
 
+export const DEFAULT_WRONGBOOK_ANALYSIS_PROMPT = `你是GESP.AI的错题分析助手，专门帮助学生找出代码中的具体错误。
+
+任务：仔细分析学生提交的代码，找出导致答案错误的具体问题。
+
+规则：
+1. 直接指出代码中的错误位置（引用具体代码片段）
+2. 解释这样写为什么会出错，以及会导致什么错误结果
+3. 给出修改思路和方向，但不直接给出完整修改后的代码
+4. 如果有多处错误，按重要程度排序列出
+5. 语言简洁，适合小学到初中学生理解
+
+当前题目信息：
+- 标题：{{problem_title}}
+- 描述：{{problem_description}}
+- 输入格式：{{input_format}}
+- 输出格式：{{output_format}}
+
+{{wrong_code_section}}`;
+
 const DEFAULT_SYSTEM_PROMPT = `你是GESP.AI的AI编程老师，帮助学生学习C++和GESP考试。
 
 核心规则：
@@ -36,6 +55,20 @@ async function getSystemPrompt(): Promise<string> {
     console.error("[AITeacher] 加载提示词失败:", e);
   }
   return DEFAULT_SYSTEM_PROMPT;
+}
+
+/** 从数据库加载错题分析 System Prompt，没有则用默认值 */
+async function getWrongbookAnalysisPrompt(): Promise<string> {
+  try {
+    const prompt = await prisma.prompt.findFirst({
+      where: { category: "wrongbook_analysis" },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (prompt?.content) return prompt.content;
+  } catch (e) {
+    console.error("[AITeacher] 加载错题分析提示词失败:", e);
+  }
+  return DEFAULT_WRONGBOOK_ANALYSIS_PROMPT;
 }
 
 /** 替换提示词中的变量 */
@@ -81,6 +114,29 @@ async function buildSystemPrompt(
     input_format: problem.inputFormat,
     output_format: problem.outputFormat,
     user_code_section: codeSection,
+  });
+}
+
+/** 构建错题分析的系统提示词（使用 wrongbook_analysis 分类提示词） */
+async function buildWrongbookSystemPrompt(
+  problemId: number,
+  code: string
+): Promise<string> {
+  const problem = await prisma.problem.findUnique({
+    where: { id: problemId },
+    select: { title: true, description: true, inputFormat: true, outputFormat: true },
+  });
+
+  if (!problem) throw new Error("题目不存在");
+
+  const template = await getWrongbookAnalysisPrompt();
+
+  return substituteVariables(template, {
+    problem_title: problem.title,
+    problem_description: problem.description.slice(0, 2000),
+    input_format: problem.inputFormat,
+    output_format: problem.outputFormat,
+    wrong_code_section: `学生提交的代码（存在错误）：\n\`\`\`cpp\n${code}\n\`\`\``,
   });
 }
 
@@ -167,4 +223,84 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
   });
 
   return readable;
+}
+
+/**
+ * 错题分析：自动拉取用户最近一次非 AC 提交代码，
+ * 用 wrongbook_analysis 提示词进行专项分析。
+ */
+export async function analyzeWrongCode(ctx: ChatContext): Promise<ReadableStream<Uint8Array>> {
+  // 拉取最近一次非 AC 代码（若调用方已传入则直接用）
+  let code = ctx.code;
+  if (!code) {
+    const latest = await prisma.submission.findFirst({
+      where: { userId: ctx.userId, problemId: ctx.problemId, status: { not: "AC" } },
+      orderBy: { createdAt: "desc" },
+      select: { code: true },
+    });
+    code = latest?.code ?? "";
+  }
+
+  if (!code) {
+    throw new Error("未找到该题的错误提交记录");
+  }
+
+  const systemPrompt = await buildWrongbookSystemPrompt(ctx.problemId, code);
+  const history = await loadChatHistory(ctx.userId, ctx.problemId);
+
+  // 保存用户触发消息
+  await prisma.chatHistory.create({
+    data: {
+      userId: ctx.userId,
+      problemId: ctx.problemId,
+      role: "user",
+      content: ctx.message,
+    },
+  });
+
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+    ...history,
+    { role: "user", content: ctx.message },
+  ];
+
+  console.log(`[WrongbookAnalysis] 调用模型: ${AI_TEACHER_MODEL}`);
+  const stream = await client.messages.stream({
+    model: AI_TEACHER_MODEL,
+    max_tokens: 3000,
+    system: systemPrompt,
+    messages,
+  });
+
+  let fullResponse = "";
+  const encoder = new TextEncoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const event of stream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            const text = event.delta.text;
+            fullResponse += text;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+          }
+        }
+
+        await prisma.chatHistory.create({
+          data: {
+            userId: ctx.userId,
+            problemId: ctx.problemId,
+            role: "assistant",
+            content: fullResponse,
+          },
+        });
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
+        controller.close();
+      } catch (e: any) {
+        console.error("[WrongbookAnalysis] Stream error:", e);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e.message })}\n\n`));
+        controller.close();
+      }
+    },
+  });
 }

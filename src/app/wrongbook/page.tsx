@@ -29,8 +29,7 @@ const LEVEL_COLORS: Record<number, string> = {
   8: "bg-red-100 text-red-700",
 };
 
-const AI_ANALYSIS_PROMPT =
-  "请帮我分析这道题的核心解题思路和常见错误方向，不要给出完整代码，但请用例子引导我理解正确的思路。";
+const ANALYSIS_TRIGGER = "请分析我的代码哪里出错了。";
 
 export default function WrongBookPage() {
   const router = useRouter();
@@ -203,7 +202,7 @@ export default function WrongBookPage() {
                     }
                     className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100"
                   >
-                    AI 分析
+                    错题分析
                   </button>
                   <button
                     onClick={() => handleRemove(entry.problemId)}
@@ -225,7 +224,7 @@ export default function WrongBookPage() {
             {/* 弹窗标题栏 */}
             <div className="flex items-center justify-between border-b px-4 py-3">
               <div>
-                <span className="text-sm font-semibold text-gray-900">AI 分析</span>
+                <span className="text-sm font-semibold text-gray-900">错题分析</span>
                 <span className="ml-2 text-xs text-gray-400 truncate max-w-[200px] inline-block align-middle">
                   {aiProblem.title}
                 </span>
@@ -238,12 +237,14 @@ export default function WrongBookPage() {
               </button>
             </div>
 
-            {/* ChatPanel */}
+            {/* ChatPanel：错题分析模式 */}
             <div className="flex-1 overflow-hidden">
               <ChatPanel
                 problemId={aiProblem.id}
                 code=""
-                initialMessage={AI_ANALYSIS_PROMPT}
+                mode="analysis"
+                title="错题分析"
+                initialMessage={ANALYSIS_TRIGGER}
               />
             </div>
           </div>

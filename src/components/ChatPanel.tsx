@@ -15,9 +15,11 @@ interface ChatPanelProps {
   problemId: number;
   code: string;
   initialMessage?: string;
+  mode?: string;   // "analysis" 时使用错题分析提示词
+  title?: string;  // 面板标题，默认 "AI 老师"
 }
 
-export default function ChatPanel({ problemId, code, initialMessage }: ChatPanelProps) {
+export default function ChatPanel({ problemId, code, initialMessage, mode, title }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -72,6 +74,7 @@ export default function ChatPanel({ problemId, code, initialMessage }: ChatPanel
           problemId,
           message: text,
           code: includeCode ? code : undefined,
+          mode,
         }),
       });
 
@@ -145,7 +148,7 @@ export default function ChatPanel({ problemId, code, initialMessage }: ChatPanel
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-900">AI 老师</span>
+          <span className="text-sm font-semibold text-gray-900">{title ?? "AI 老师"}</span>
           {model && <span className="text-xs text-gray-400">({model})</span>}
         </div>
         <label className="flex items-center gap-1.5 text-xs text-gray-500">

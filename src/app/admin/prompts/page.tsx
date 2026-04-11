@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
+import { DEFAULT_WRONGBOOK_ANALYSIS_PROMPT } from "@/lib/aiteacher";
 
 interface Prompt {
   id: number;
@@ -12,7 +13,8 @@ interface Prompt {
 }
 
 const CATEGORIES = [
-  { value: "system", label: "系统提示词" },
+  { value: "system", label: "AI老师提示词" },
+  { value: "wrongbook_analysis", label: "错题分析提示词" },
   { value: "hint", label: "思路提示" },
   { value: "error_analysis", label: "错误分析" },
   { value: "step_guide", label: "分步引导" },
@@ -102,7 +104,8 @@ export default function AdminPromptsPage() {
         </div>
 
         <div className="mb-4 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
-          支持变量占位符：{`{{problem_title}}`}、{`{{problem_description}}`}、{`{{input_format}}`}、{`{{output_format}}`}、{`{{user_code_section}}`}
+          AI老师变量：{`{{problem_title}}`}、{`{{problem_description}}`}、{`{{input_format}}`}、{`{{output_format}}`}、{`{{user_code_section}}`}
+          &nbsp;·&nbsp;错题分析额外支持：{`{{wrong_code_section}}`}
         </div>
 
         {showForm && (
@@ -169,6 +172,38 @@ export default function AdminPromptsPage() {
             <p className="mb-2 text-xs text-amber-600">当前未在数据库中配置系统提示词，AI 老师正在使用以下内置默认提示词：</p>
             <pre className="max-h-48 overflow-auto rounded bg-white p-3 text-xs font-mono text-gray-600 border border-amber-100">
               {DEFAULT_SYSTEM_PROMPT}
+            </pre>
+          </div>
+        )}
+
+        {/* 错题分析默认提示词：当没有 wrongbook_analysis 提示词时显示 */}
+        {!loading && !prompts.some((p) => p.category === "wrongbook_analysis") && (
+          <div className="mb-6 rounded-lg bg-purple-50 border border-purple-200 p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-purple-800">错题分析默认提示词</span>
+                <span className="rounded bg-purple-100 px-2 py-0.5 text-xs text-purple-600">内置</span>
+              </div>
+              <button
+                onClick={() => {
+                  setEditing(null);
+                  setForm({
+                    name: "错题分析提示词",
+                    category: "wrongbook_analysis",
+                    content: DEFAULT_WRONGBOOK_ANALYSIS_PROMPT,
+                    variables: JSON.stringify(["problem_title", "problem_description", "input_format", "output_format", "wrong_code_section"]),
+                  });
+                  setShowForm(true);
+                  setError("");
+                }}
+                className="rounded-md border border-purple-300 bg-purple-100 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-200"
+              >
+                导入为可编辑
+              </button>
+            </div>
+            <p className="mb-2 text-xs text-purple-600">当前未配置错题分析提示词，错题本正在使用以下内置默认提示词：</p>
+            <pre className="max-h-48 overflow-auto rounded bg-white p-3 text-xs font-mono text-gray-600 border border-purple-100">
+              {DEFAULT_WRONGBOOK_ANALYSIS_PROMPT}
             </pre>
           </div>
         )}
