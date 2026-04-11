@@ -43,14 +43,14 @@ export async function fetchLuoguProblem(
   luoguId: string,
   manualLevel?: number
 ): Promise<LuoguProblemData> {
-  const res = await fetch(`https://www.luogu.com.cn/problem/${luoguId}`, {
+  // 使用 _contentOnly=1 直接获取 JSON，其中 currentData.tags 包含完整标签字典
+  const res = await fetch(`https://www.luogu.com.cn/problem/${luoguId}?_contentOnly=1`, {
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
   });
 
   if (!res.ok) throw new Error(`洛谷请求失败: HTTP ${res.status}`);
 
-  const html = await res.text();
-  const data = extractJsonFromHtml(html);
+  const data = await res.json();
   const raw = data.currentData || data.data || data;
   const p = raw?.problem;
 
@@ -98,32 +98,12 @@ export async function fetchLuoguProblem(
   }));
 
   // 提取算法标签
-  // p.tags = tag ID 数组 [6, 160, 338]
-  // 字典可能在 data.tags（顶层数组）或 raw.tags（对象）
-  const tagIds: number[] = Array.isArray(p.tags) && typeof p.tags[0] === "number" ? p.tags : [];
-  const tagDict: Record<string, string> = {};
-
-  // 格式A: data.tags 是顶层数组 [{id, name}, ...]
-  const topTags = data.tags;
-  if (Array.isArray(topTags)) {
-    for (const t of topTags) {
-      if (t.id != null && t.name) tagDict[String(t.id)] = t.name;
-    }
-  }
-  // 格式B: raw.tags 是字典对象 { "14": { name: "递推" } }
-  const rawTagsObj = raw.tags;
-  if (rawTagsObj && typeof rawTagsObj === "object" && !Array.isArray(rawTagsObj)) {
-    for (const [k, v] of Object.entries(rawTagsObj as Record<string, any>)) {
-      tagDict[k] = v?.name ?? String(v);
-    }
-  }
-  // 格式C: p.tags 直接是对象数组 [{id, name}, ...]
-  const tagNames: string[] =
-    Array.isArray(p.tags) && p.tags.length > 0 && typeof p.tags[0] === "object"
-      ? (p.tags as any[]).map((t) => t.name ?? t.title).filter(Boolean)
-      : tagIds.map((id) => tagDict[String(id)]).filter(Boolean);
-
-  console.log(`[luogu] ${p.pid} tagIds:`, tagIds, "resolved:", tagNames);
+  // _contentOnly=1 模式下：p.tags = [id, ...], raw.tags = { "id": { name, ... } }
+  const tagIds: number[] = Array.isArray(p.tags) ? p.tags.filter((t: any) => typeof t === "number") : [];
+  const tagDict: Record<string, any> = raw.tags || {};
+  const tagNames: string[] = tagIds
+    .map((id) => tagDict[String(id)]?.name)
+    .filter((n): n is string => !!n);
 
   return {
     luoguId: p.pid,
