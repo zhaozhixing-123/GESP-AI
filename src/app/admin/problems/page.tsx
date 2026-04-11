@@ -46,13 +46,16 @@ export default function AdminProblemsPage() {
   // === AI 打标签 ===
   const [aiTagLoading, setAiTagLoading] = useState(false);
   const [aiTagStatus, setAiTagStatus] = useState("");
+  const [aiTagErrors, setAiTagErrors] = useState<{ luoguId: string; error: string }[]>([]);
 
-  async function streamTagging(url: string, confirmMsg: string, setLoading: (v: boolean) => void, setStatus: (v: string) => void) {
-    if (!confirm(confirmMsg)) return;
-    setLoading(true);
-    setStatus("准备中...");
+  async function runAiTag(all: boolean) {
+    setAiTagLoading(true);
+    setAiTagStatus("准备中...");
+    setAiTagErrors([]);
     try {
-      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({}) });
+      const res = await fetch("/api/admin/problems/ai-tag", {
+        method: "POST", headers, body: JSON.stringify(all ? { all: true } : {}),
+      });
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (reader) {
@@ -63,16 +66,23 @@ export default function AdminProblemsPage() {
             if (!line.startsWith("data: ")) continue;
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.done) { setStatus(data.message); fetchProblems(); }
-              else setStatus(`${data.current}/${data.total} ${data.luoguId} ${data.status === "ok" ? "✓" : "✗"}`);
+              if (data.done) {
+                setAiTagStatus(data.message);
+                fetchProblems();
+              } else if (data.status === "error") {
+                setAiTagStatus(`${data.current}/${data.total} ${data.luoguId} ✗ ${data.error}`);
+                setAiTagErrors((prev) => [...prev, { luoguId: data.luoguId, error: data.error }]);
+              } else {
+                setAiTagStatus(`${data.current}/${data.total} ${data.luoguId} ✓`);
+              }
             } catch {}
           }
         }
       }
     } catch {
-      setStatus("网络错误，请重试");
+      setAiTagStatus("网络错误，请重试");
     }
-    setLoading(false);
+    setAiTagLoading(false);
   }
 
   async function handleClearTags() {
@@ -84,40 +94,13 @@ export default function AdminProblemsPage() {
   }
 
   async function handleAiTag() {
-    await streamTagging(
-      "/api/admin/problems/ai-tag",
-      "将用 AI 为所有尚未打标签的题目生成知识点标签，确定？",
-      setAiTagLoading,
-      setAiTagStatus,
-    );
+    if (!confirm("将用 AI 为所有尚未打标签的题目生成知识点标签，确定？")) return;
+    await runAiTag(false);
   }
 
   async function handleAiTagAll() {
     if (!confirm("将用 AI 重新为【全部】题目打标签（覆盖已有标签），确定？")) return;
-    setAiTagLoading(true);
-    setAiTagStatus("准备中...");
-    try {
-      const res = await fetch("/api/admin/problems/ai-tag", { method: "POST", headers, body: JSON.stringify({ all: true }) });
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          for (const line of decoder.decode(value, { stream: true }).split("\n")) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.done) { setAiTagStatus(data.message); fetchProblems(); }
-              else setAiTagStatus(`${data.current}/${data.total} ${data.luoguId} ${data.status === "ok" ? "✓" : "✗"}`);
-            } catch {}
-          }
-        }
-      }
-    } catch {
-      setAiTagStatus("网络错误，请重试");
-    }
-    setAiTagLoading(false);
+    await runAiTag(true);
   }
 
   // === 批量导入 ===
@@ -587,6 +570,11 @@ export default function AdminProblemsPage() {
                 </button>
                 {aiTagStatus && (
                   <span className="text-xs text-sky-600">{aiTagStatus}</span>
+                )}
+                {aiTagErrors.length > 0 && (
+                  <div className="w-full mt-1 rounded bg-red-50 px-3 py-2 text-xs text-red-600">
+                    失败 {aiTagErrors.length} 道：{aiTagErrors.map((e) => `${e.luoguId}（${e.error}）`).join("、")}
+                  </div>
                 )}
                 <button onClick={handleClearAll}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
