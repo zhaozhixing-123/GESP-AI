@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import Image from "next/image";
 
 const PLANS = [
   {
@@ -148,8 +147,9 @@ export default function PaymentPage() {
             <p className="mb-4 text-sm text-gray-600">
               请用微信扫码支付 <span className="font-bold text-gray-900">¥{plan.price}</span>
             </p>
-            <div className="mx-auto mb-4 h-48 w-48 relative">
-              <Image src={qrcodeUrl} alt="支付二维码" fill className="object-contain" unoptimized />
+            <div className="mx-auto mb-4 h-48 w-48">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrcodeUrl} alt="支付二维码" className="h-full w-full object-contain" />
             </div>
             {pollExpired ? (
               <div className="space-y-3">

@@ -143,6 +143,7 @@ export default function ProblemDetailPage() {
       });
       if (res.status === 401) {
         router.push("/");
+        setLoading(false);
         return;
       }
       if (res.status === 403) {
