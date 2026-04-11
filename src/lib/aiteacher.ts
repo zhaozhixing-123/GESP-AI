@@ -244,6 +244,7 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
 /**
  * 错题分析（一次性）：自动拉取用户最近一次非 AC 提交代码，
  * 用 wrongbook_analysis 提示词进行专项分析，不读写 ChatHistory。
+ * 流结束后将完整分析结果 upsert 到 WrongBookAnalysis 表。
  */
 export async function streamWrongCodeAnalysis({
   userId,
@@ -255,13 +256,14 @@ export async function streamWrongCodeAnalysis({
   const latest = await prisma.submission.findFirst({
     where: { userId, problemId, status: { not: "AC" } },
     orderBy: { createdAt: "desc" },
-    select: { code: true },
+    select: { id: true, code: true },
   });
 
   if (!latest?.code) {
     throw new Error("未找到该题的错误提交记录，请先提交一次代码");
   }
 
+  const submissionId = latest.id;
   const systemPrompt = await buildWrongbookSystemPrompt(problemId, latest.code);
 
   console.log(`[WrongbookAnalysis] 调用模型: ${AI_TEACHER_MODEL}`);
@@ -276,12 +278,28 @@ export async function streamWrongCodeAnalysis({
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      let fullText = "";
       try {
         for await (const event of stream) {
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            fullText += event.delta.text;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`));
           }
         }
+
+        // 提取错误类型并持久化到数据库
+        const match = fullText.match(/【错误类型：(.+?)】/);
+        const errorType = match ? match[1].trim() : "其他";
+        try {
+          await prisma.wrongBookAnalysis.upsert({
+            where: { userId_problemId: { userId, problemId } },
+            create: { userId, problemId, submissionId, content: fullText, errorType },
+            update: { submissionId, content: fullText, errorType },
+          });
+        } catch (dbErr) {
+          console.error("[WrongbookAnalysis] 保存分析失败:", dbErr);
+        }
+
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
         controller.close();
       } catch (e: any) {

@@ -8,48 +8,51 @@ datasource db {
 }
 
 model User {
-  id             Int          @id @default(autoincrement())
-  username       String       @unique
-  passwordHash   String
-  role           String       @default("user") // admin | user
-  createdAt      DateTime     @default(now())
-  parentPassword String?      // 家长密码（bcrypt hash）
-  feishuWebhook  String?      // 飞书 Webhook URL
-  submissions    Submission[]
-  wrongBooks     WrongBook[]
-  chatHistory    ChatHistory[]
+  id                  Int                  @id @default(autoincrement())
+  username            String               @unique
+  passwordHash        String
+  role                String               @default("user") // admin | user
+  createdAt           DateTime             @default(now())
+  parentPassword      String?              // 家长密码（bcrypt hash）
+  feishuWebhook       String?              // 飞书 Webhook URL
+  submissions         Submission[]
+  wrongBooks          WrongBook[]
+  chatHistory         ChatHistory[]
+  wrongBookAnalyses   WrongBookAnalysis[]
 }
 
 model Problem {
-  id            Int          @id @default(autoincrement())
-  luoguId       String       @unique
-  title         String
-  level         Int          // 1-8 GESP级别
-  description   String
-  inputFormat   String
-  outputFormat  String
-  samples       String       // JSON: [{input, output}]
-  testCases     String       // JSON: [{input, output}]
-  tags          String       @default("[]") // JSON: ["递推/递归", "动态规划"]
-  verifiedAt    DateTime?    // 上次复核时间
-  verifiedCount Int          @default(0) // 复核通过的测试点数
-  submissions   Submission[]
-  wrongBooks    WrongBook[]
-  chatHistory   ChatHistory[]
+  id                  Int                  @id @default(autoincrement())
+  luoguId             String               @unique
+  title               String
+  level               Int                  // 1-8 GESP级别
+  description         String
+  inputFormat         String
+  outputFormat        String
+  samples             String               // JSON: [{input, output}]
+  testCases           String               // JSON: [{input, output}]
+  tags                String               @default("[]") // JSON: ["递推/递归", "动态规划"]
+  verifiedAt          DateTime?            // 上次复核时间
+  verifiedCount       Int                  @default(0) // 复核通过的测试点数
+  submissions         Submission[]
+  wrongBooks          WrongBook[]
+  chatHistory         ChatHistory[]
+  wrongBookAnalyses   WrongBookAnalysis[]
 }
 
 model Submission {
-  id         Int      @id @default(autoincrement())
-  userId     Int
-  problemId  Int
-  code       String
-  language   String   @default("cpp")
-  status     String   // AC, WA, TLE, CE, RE, MLE
-  timeUsed   Int?     // ms
-  memoryUsed Int?     // KB
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id])
-  problem    Problem  @relation(fields: [problemId], references: [id])
+  id                  Int                  @id @default(autoincrement())
+  userId              Int
+  problemId           Int
+  code                String
+  language            String               @default("cpp")
+  status              String               // AC, WA, TLE, CE, RE, MLE
+  timeUsed            Int?                 // ms
+  memoryUsed          Int?                 // KB
+  createdAt           DateTime             @default(now())
+  user                User                 @relation(fields: [userId], references: [id])
+  problem             Problem              @relation(fields: [problemId], references: [id])
+  wrongBookAnalyses   WrongBookAnalysis[]
 }
 
 model WrongBook {
@@ -59,6 +62,21 @@ model WrongBook {
   addedAt   DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
   problem   Problem  @relation(fields: [problemId], references: [id])
+
+  @@unique([userId, problemId])
+}
+
+model WrongBookAnalysis {
+  id           Int        @id @default(autoincrement())
+  userId       Int
+  problemId    Int
+  submissionId Int
+  content      String     // 完整 AI 响应（含【错误类型：xxx】首行）
+  errorType    String     // 提取的错误类型
+  createdAt    DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id])
+  problem      Problem    @relation(fields: [problemId], references: [id])
+  submission   Submission @relation(fields: [submissionId], references: [id])
 
   @@unique([userId, problemId])
 }

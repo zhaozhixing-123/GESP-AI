@@ -2,37 +2,52 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 
-/** GET /api/wrongbook — 获取当前用户的错题本列表（含掌握状态） */
+/** GET /api/wrongbook — 获取当前用户的错题本列表（含掌握状态和 AI 分析） */
 export async function GET(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   try {
-    const entries = await prisma.wrongBook.findMany({
-      where: { userId: user.userId },
-      orderBy: { addedAt: "desc" },
-      include: {
-        problem: {
-          select: { id: true, luoguId: true, title: true, level: true, tags: true },
-        },
-      },
-    });
-
-    // 批量查询每道题是否在加入错题本之后有 AC 提交
-    const enriched = await Promise.all(
-      entries.map(async (entry) => {
-        const acAfter = await prisma.submission.findFirst({
-          where: {
-            userId: user.userId,
-            problemId: entry.problemId,
-            status: "AC",
-            createdAt: { gte: entry.addedAt },
+    const [entries, acSubmissions, analyses] = await Promise.all([
+      prisma.wrongBook.findMany({
+        where: { userId: user.userId },
+        orderBy: { addedAt: "desc" },
+        include: {
+          problem: {
+            select: { id: true, luoguId: true, title: true, level: true, tags: true },
           },
-          select: { id: true },
-        });
-        return { ...entry, mastered: !!acAfter };
-      })
-    );
+        },
+      }),
+      // 批量拉取该用户所有 AC 提交，避免 N+1
+      prisma.submission.findMany({
+        where: { userId: user.userId, status: "AC" },
+        select: { problemId: true, createdAt: true },
+      }),
+      // 批量拉取已保存的 AI 分析
+      prisma.wrongBookAnalysis.findMany({
+        where: { userId: user.userId },
+        select: { problemId: true, content: true, errorType: true, submissionId: true },
+      }),
+    ]);
+
+    // 按 problemId 归组 AC 提交时间列表
+    const acMap = new Map<number, Date[]>();
+    for (const s of acSubmissions) {
+      const arr = acMap.get(s.problemId) ?? [];
+      arr.push(s.createdAt);
+      acMap.set(s.problemId, arr);
+    }
+
+    // 按 problemId 索引分析记录
+    const analysisMap = new Map(analyses.map((a) => [a.problemId, a]));
+
+    const enriched = entries.map((entry) => {
+      const mastered = (acMap.get(entry.problemId) ?? []).some(
+        (t) => t >= entry.addedAt
+      );
+      const analysis = analysisMap.get(entry.problemId) ?? null;
+      return { ...entry, mastered, analysis };
+    });
 
     return Response.json({ entries: enriched });
   } catch {
