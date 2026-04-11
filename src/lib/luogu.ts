@@ -43,14 +43,14 @@ export async function fetchLuoguProblem(
   luoguId: string,
   manualLevel?: number
 ): Promise<LuoguProblemData> {
-  // 使用 _contentOnly=1 直接获取 JSON，其中 currentData.tags 包含完整标签字典
-  const res = await fetch(`https://www.luogu.com.cn/problem/${luoguId}?_contentOnly=1`, {
+  const res = await fetch(`https://www.luogu.com.cn/problem/${luoguId}`, {
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
   });
 
   if (!res.ok) throw new Error(`洛谷请求失败: HTTP ${res.status}`);
 
-  const data = await res.json();
+  const html = await res.text();
+  const data = extractJsonFromHtml(html);
   const raw = data.currentData || data.data || data;
   const p = raw?.problem;
 
@@ -97,13 +97,8 @@ export async function fetchLuoguProblem(
     output: String(s[1] ?? s.output ?? "").trim(),
   }));
 
-  // 提取算法标签
-  // _contentOnly=1 模式下：p.tags = [id, ...], raw.tags = { "id": { name, ... } }
-  const tagIds: number[] = Array.isArray(p.tags) ? p.tags.filter((t: any) => typeof t === "number") : [];
-  const tagDict: Record<string, any> = raw.tags || {};
-  const tagNames: string[] = tagIds
-    .map((id) => tagDict[String(id)]?.name)
-    .filter((n): n is string => !!n);
+  // 洛谷标签名无法从页面获取，由 AI 打标签接口单独处理
+  const tagNames: string[] = [];
 
   return {
     luoguId: p.pid,

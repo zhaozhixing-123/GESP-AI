@@ -43,16 +43,16 @@ export default function AdminProblemsPage() {
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
   const [importHistory, setImportHistory] = useState<Array<{ luoguId: string; title: string; id: number }>>([]);
 
-  // === 补打标签 ===
-  const [retagLoading, setRetagLoading] = useState(false);
-  const [retagStatus, setRetagStatus] = useState("");
+  // === AI 打标签 ===
+  const [aiTagLoading, setAiTagLoading] = useState(false);
+  const [aiTagStatus, setAiTagStatus] = useState("");
 
-  async function handleRetag() {
-    if (!confirm("将为所有尚未打标签的题目从洛谷重新拉取知识点标签，可能需要几分钟，确定？")) return;
-    setRetagLoading(true);
-    setRetagStatus("准备中...");
+  async function streamTagging(url: string, confirmMsg: string, setLoading: (v: boolean) => void, setStatus: (v: string) => void) {
+    if (!confirm(confirmMsg)) return;
+    setLoading(true);
+    setStatus("准备中...");
     try {
-      const res = await fetch("/api/admin/problems/retag", { method: "POST", headers, body: JSON.stringify({}) });
+      const res = await fetch(url, { method: "POST", headers, body: JSON.stringify({}) });
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (reader) {
@@ -63,20 +63,25 @@ export default function AdminProblemsPage() {
             if (!line.startsWith("data: ")) continue;
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.done) {
-                setRetagStatus(data.message);
-                fetchProblems();
-              } else {
-                setRetagStatus(`${data.current}/${data.total} ${data.luoguId} ${data.status === "ok" ? "✓" : "✗"}`);
-              }
+              if (data.done) { setStatus(data.message); fetchProblems(); }
+              else setStatus(`${data.current}/${data.total} ${data.luoguId} ${data.status === "ok" ? "✓" : "✗"}`);
             } catch {}
           }
         }
       }
     } catch {
-      setRetagStatus("网络错误，请重试");
+      setStatus("网络错误，请重试");
     }
-    setRetagLoading(false);
+    setLoading(false);
+  }
+
+  async function handleAiTag() {
+    await streamTagging(
+      "/api/admin/problems/ai-tag",
+      "将用 AI 为所有尚未打标签的题目生成知识点标签，确定？",
+      setAiTagLoading,
+      setAiTagStatus,
+    );
   }
 
   // === 批量导入 ===
@@ -529,13 +534,13 @@ export default function AdminProblemsPage() {
               </select>
               <span className="text-sm text-gray-400">{filteredProblems.length}/{problems.length} 题</span>
               <div className="flex gap-2 ml-auto">
-                <button onClick={handleRetag}
-                  disabled={retagLoading}
+                <button onClick={handleAiTag}
+                  disabled={aiTagLoading}
                   className="rounded-md border border-sky-300 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
-                  {retagLoading ? "回填中..." : "补打知识点标签"}
+                  {aiTagLoading ? "打标中..." : "AI 打标签"}
                 </button>
-                {retagStatus && (
-                  <span className="text-xs text-sky-600">{retagStatus}</span>
+                {aiTagStatus && (
+                  <span className="text-xs text-sky-600">{aiTagStatus}</span>
                 )}
                 <button onClick={handleClearAll}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
