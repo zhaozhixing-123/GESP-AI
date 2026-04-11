@@ -15,10 +15,17 @@ model User {
   createdAt           DateTime             @default(now())
   parentPassword      String?              // 家长密码（bcrypt hash）
   feishuWebhook       String?              // 飞书 Webhook URL
+  // 账户扩展字段
+  phone               String?              // 手机号（选填）
+  targetLevel         Int?                 // 目标考试级别 3-8
+  examDate            DateTime?            // 目标考试日期
+  plan                String               @default("free") // free | monthly | quarterly | yearly
+  planExpireAt        DateTime?            // 订阅到期时间，null = 免费用户
   submissions         Submission[]
   wrongBooks          WrongBook[]
   chatHistory         ChatHistory[]
   wrongBookAnalyses   WrongBookAnalysis[]
+  orders              Order[]
 }
 
 model Problem {
@@ -90,6 +97,19 @@ model ChatHistory {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
   problem   Problem  @relation(fields: [problemId], references: [id])
+}
+
+model Order {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  orderNo       String    @unique              // 商户订单号（传给虎皮椒）
+  plan          String                         // monthly | quarterly | yearly
+  amount        Int                            // 金额（单位：分）
+  status        String    @default("pending")  // pending | paid | expired
+  transactionId String?                        // 虎皮椒返回的交易号
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id])
 }
 
 model Prompt {

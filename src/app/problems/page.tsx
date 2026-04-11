@@ -33,8 +33,13 @@ export default function ProblemsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const level = searchParams.get("level") || "";
+
+  useEffect(() => {
+    if (searchParams.get("welcome") === "1") setShowWelcome(true);
+  }, [searchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -81,6 +86,12 @@ export default function ProblemsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      {showWelcome && (
+        <div className="bg-blue-600 text-white text-sm text-center py-2.5 px-4">
+          欢迎加入 GESP.AI！你可以免费体验 1 道题，选一道开始吧 💪
+          <button onClick={() => setShowWelcome(false)} className="ml-4 opacity-70 hover:opacity-100">✕</button>
+        </div>
+      )}
       <main className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">题库</h1>

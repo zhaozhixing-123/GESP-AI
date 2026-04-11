@@ -110,6 +110,7 @@ export default function ProblemDetailPage() {
   const router = useRouter();
   const [problem, setProblem] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paywallError, setPaywallError] = useState("");  // 403 付费墙
   const [copied, setCopied] = useState<string | null>(null);
   const [code, setCode] = useState(DEFAULT_CODE);
 
@@ -140,6 +141,16 @@ export default function ProblemDetailPage() {
       const res = await fetch(`/api/problems/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        router.push("/");
+        return;
+      }
+      if (res.status === 403) {
+        const data = await res.json();
+        setPaywallError(data.message || "请订阅后解锁");
+        setLoading(false);
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setProblem(data);
@@ -325,6 +336,35 @@ export default function ProblemDetailPage() {
         <Navbar />
         <div className="flex flex-1 items-center justify-center">
           <div className="text-gray-500">加载中...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (paywallError) {
+    return (
+      <div className="flex h-screen flex-col">
+        <Navbar />
+        <div className="flex flex-1 items-center justify-center">
+          <div className="mx-auto max-w-md rounded-2xl bg-white p-10 shadow-lg text-center">
+            <div className="mb-4 text-5xl">🔒</div>
+            <h2 className="mb-2 text-xl font-bold text-gray-900">免费体验已用完</h2>
+            <p className="mb-6 text-sm text-gray-500">
+              订阅会员，解锁全部真题、AI 老师、错题分析
+            </p>
+            <button
+              onClick={() => router.push("/payment")}
+              className="w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              查看会员套餐
+            </button>
+            <button
+              onClick={() => router.push("/problems")}
+              className="mt-3 w-full rounded-lg border border-gray-200 py-3 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              返回题库
+            </button>
+          </div>
         </div>
       </div>
     );

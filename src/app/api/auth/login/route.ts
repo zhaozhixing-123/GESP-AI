@@ -8,10 +8,7 @@ export async function POST(request: NextRequest) {
     const { username, password } = await request.json();
 
     if (!username || !password) {
-      return Response.json(
-        { error: "用户名和密码不能为空" },
-        { status: 400 }
-      );
+      return Response.json({ error: "用户名和密码不能为空" }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({ where: { username } });
@@ -32,7 +29,13 @@ export async function POST(request: NextRequest) {
 
     return Response.json({
       token,
-      user: { id: user.id, username: user.username, role: user.role },
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        plan: user.plan,
+        planExpireAt: user.planExpireAt,
+      },
     });
   } catch {
     return Response.json({ error: "登录失败，请重试" }, { status: 500 });

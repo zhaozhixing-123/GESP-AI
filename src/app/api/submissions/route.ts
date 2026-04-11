@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
+import { checkFreeLimit } from "@/lib/subscription";
 import { judgeAll, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
 
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) {
-    return Response.json({ error: "未登录" }, { status: 401 });
+    return Response.json({ error: "请先登录" }, { status: 401 });
   }
 
   try {
@@ -15,6 +16,14 @@ export async function POST(request: NextRequest) {
 
     if (!problemId || !code?.trim()) {
       return Response.json({ error: "题目ID和代码不能为空" }, { status: 400 });
+    }
+
+    const allowed = await checkFreeLimit(user.userId, parseInt(problemId));
+    if (!allowed) {
+      return Response.json(
+        { error: "free_limit", message: "免费体验已用完，订阅后解锁全部题目" },
+        { status: 403 }
+      );
     }
 
     // 获取题目样例 + 额外测试数据
