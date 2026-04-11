@@ -75,6 +75,14 @@ export default function AdminProblemsPage() {
     setLoading(false);
   }
 
+  async function handleClearTags() {
+    if (!confirm("将清空所有题目的知识点标签，确定？")) return;
+    const res = await fetch("/api/admin/problems/clear-tags", { method: "POST", headers });
+    const data = await res.json();
+    alert(data.message || data.error);
+    fetchProblems();
+  }
+
   async function handleAiTag() {
     await streamTagging(
       "/api/admin/problems/ai-tag",
@@ -562,6 +570,11 @@ export default function AdminProblemsPage() {
               </select>
               <span className="text-sm text-gray-400">{filteredProblems.length}/{problems.length} 题</span>
               <div className="flex gap-2 ml-auto">
+                <button onClick={handleClearTags}
+                  disabled={aiTagLoading}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50">
+                  清空标签
+                </button>
                 <button onClick={handleAiTag}
                   disabled={aiTagLoading}
                   className="rounded-md border border-sky-300 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
