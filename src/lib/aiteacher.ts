@@ -226,52 +226,36 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
 }
 
 /**
- * 错题分析：自动拉取用户最近一次非 AC 提交代码，
- * 用 wrongbook_analysis 提示词进行专项分析。
+ * 错题分析（一次性）：自动拉取用户最近一次非 AC 提交代码，
+ * 用 wrongbook_analysis 提示词进行专项分析，不读写 ChatHistory。
  */
-export async function analyzeWrongCode(ctx: ChatContext): Promise<ReadableStream<Uint8Array>> {
-  // 拉取最近一次非 AC 代码（若调用方已传入则直接用）
-  let code = ctx.code;
-  if (!code) {
-    const latest = await prisma.submission.findFirst({
-      where: { userId: ctx.userId, problemId: ctx.problemId, status: { not: "AC" } },
-      orderBy: { createdAt: "desc" },
-      select: { code: true },
-    });
-    code = latest?.code ?? "";
-  }
-
-  if (!code) {
-    throw new Error("未找到该题的错误提交记录");
-  }
-
-  const systemPrompt = await buildWrongbookSystemPrompt(ctx.problemId, code);
-  const history = await loadChatHistory(ctx.userId, ctx.problemId);
-
-  // 保存用户触发消息
-  await prisma.chatHistory.create({
-    data: {
-      userId: ctx.userId,
-      problemId: ctx.problemId,
-      role: "user",
-      content: ctx.message,
-    },
+export async function streamWrongCodeAnalysis({
+  userId,
+  problemId,
+}: {
+  userId: number;
+  problemId: number;
+}): Promise<ReadableStream<Uint8Array>> {
+  const latest = await prisma.submission.findFirst({
+    where: { userId, problemId, status: { not: "AC" } },
+    orderBy: { createdAt: "desc" },
+    select: { code: true },
   });
 
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
-    ...history,
-    { role: "user", content: ctx.message },
-  ];
+  if (!latest?.code) {
+    throw new Error("未找到该题的错误提交记录，请先提交一次代码");
+  }
+
+  const systemPrompt = await buildWrongbookSystemPrompt(problemId, latest.code);
 
   console.log(`[WrongbookAnalysis] 调用模型: ${AI_TEACHER_MODEL}`);
   const stream = await client.messages.stream({
     model: AI_TEACHER_MODEL,
     max_tokens: 3000,
     system: systemPrompt,
-    messages,
+    messages: [{ role: "user", content: "请分析我的代码哪里出错了。" }],
   });
 
-  let fullResponse = "";
   const encoder = new TextEncoder();
 
   return new ReadableStream<Uint8Array>({
@@ -279,21 +263,9 @@ export async function analyzeWrongCode(ctx: ChatContext): Promise<ReadableStream
       try {
         for await (const event of stream) {
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            const text = event.delta.text;
-            fullResponse += text;
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`));
           }
         }
-
-        await prisma.chatHistory.create({
-          data: {
-            userId: ctx.userId,
-            problemId: ctx.problemId,
-            role: "assistant",
-            content: fullResponse,
-          },
-        });
-
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
         controller.close();
       } catch (e: any) {

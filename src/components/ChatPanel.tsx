@@ -15,11 +15,10 @@ interface ChatPanelProps {
   problemId: number;
   code: string;
   initialMessage?: string;
-  mode?: string;   // "analysis" 时使用错题分析提示词
   title?: string;  // 面板标题，默认 "AI 老师"
 }
 
-export default function ChatPanel({ problemId, code, initialMessage, mode, title }: ChatPanelProps) {
+export default function ChatPanel({ problemId, code, initialMessage, title }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -74,7 +73,6 @@ export default function ChatPanel({ problemId, code, initialMessage, mode, title
           problemId,
           message: text,
           code: includeCode ? code : undefined,
-          mode,
         }),
       });
 

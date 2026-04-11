@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { chat, analyzeWrongCode } from "@/lib/aiteacher";
+import { chat } from "@/lib/aiteacher";
 
 /** POST /api/chat — 发送消息给 AI 老师（流式响应） */
 export async function POST(request: NextRequest) {
@@ -11,22 +11,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { problemId, message, code, mode } = await request.json();
+    const { problemId, message, code } = await request.json();
 
     if (!problemId || !message?.trim()) {
       return Response.json({ error: "题目ID和消息不能为空" }, { status: 400 });
     }
 
-    const ctx = {
+    const stream = await chat({
       problemId: parseInt(problemId),
       userId: user.userId,
       message: message.trim(),
       code,
-    };
-
-    const stream = mode === "analysis"
-      ? await analyzeWrongCode(ctx)
-      : await chat(ctx);
+    });
 
     return new Response(stream, {
       headers: {

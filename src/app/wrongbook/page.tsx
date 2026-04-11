@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import ChatPanel from "@/components/ChatPanel";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 interface WrongBookEntry {
   id: number;
@@ -29,15 +33,17 @@ const LEVEL_COLORS: Record<number, string> = {
   8: "bg-red-100 text-red-700",
 };
 
-const ANALYSIS_TRIGGER = "请分析我的代码哪里出错了。";
-
 export default function WrongBookPage() {
   const router = useRouter();
   const [entries, setEntries] = useState<WrongBookEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "mastered">("all");
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
-  const [aiProblem, setAiProblem] = useState<{ id: number; title: string } | null>(null);
+
+  // 错题分析状态：problemId -> 分析文本
+  const [analyses, setAnalyses] = useState<Record<number, string>>({});
+  // 正在分析中的 problemId 集合
+  const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -59,6 +65,70 @@ export default function WrongBookPage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     setEntries((prev) => prev.filter((e) => e.problemId !== problemId));
+    setAnalyses((prev) => {
+      const next = { ...prev };
+      delete next[problemId];
+      return next;
+    });
+  }
+
+  async function handleAnalyze(problemId: number) {
+    if (analyzingIds.has(problemId)) return;
+
+    setAnalyzingIds((prev) => new Set(prev).add(problemId));
+    setAnalyses((prev) => ({ ...prev, [problemId]: "" }));
+
+    try {
+      const res = await fetch("/api/wrongbook/analyze", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ problemId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setAnalyses((prev) => ({ ...prev, [problemId]: `**分析失败：** ${data.error}` }));
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.text) {
+                fullText += data.text;
+                setAnalyses((prev) => ({ ...prev, [problemId]: fullText }));
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch {
+      setAnalyses((prev) => ({ ...prev, [problemId]: "**网络错误，请重试**" }));
+    }
+
+    setAnalyzingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(problemId);
+      return next;
+    });
+  }
+
+  function handleCloseAnalysis(problemId: number) {
+    setAnalyses((prev) => {
+      const next = { ...prev };
+      delete next[problemId];
+      return next;
+    });
   }
 
   const filtered = entries.filter((e) => {
@@ -93,7 +163,7 @@ export default function WrongBookPage() {
           </div>
         </div>
 
-        {/* 筛选：状态 */}
+        {/* 筛选 */}
         <div className="mb-4 flex flex-wrap gap-2">
           {(["all", "pending", "mastered"] as const).map((s) => (
             <button
@@ -143,113 +213,134 @@ export default function WrongBookPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center gap-4 rounded-lg bg-white px-5 py-4 shadow-sm"
-              >
-                {/* 掌握状态指示条 */}
-                <div
-                  className={`w-1 self-stretch rounded-full flex-shrink-0 ${
-                    entry.mastered ? "bg-green-400" : "bg-red-400"
-                  }`}
-                />
+            {filtered.map((entry) => {
+              const isAnalyzing = analyzingIds.has(entry.problemId);
+              const analysisText = analyses[entry.problemId];
+              const hasAnalysis = analysisText !== undefined;
 
-                {/* 题目信息 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-gray-900 truncate">
-                      {entry.problem.title}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
-                        LEVEL_COLORS[entry.problem.level] || "bg-gray-100 text-gray-600"
+              return (
+                <div key={entry.id} className="rounded-lg bg-white shadow-sm overflow-hidden">
+                  {/* 错题行 */}
+                  <div className="flex items-center gap-4 px-5 py-4">
+                    {/* 掌握状态指示条 */}
+                    <div
+                      className={`w-1 self-stretch rounded-full flex-shrink-0 ${
+                        entry.mastered ? "bg-green-400" : "bg-red-400"
                       }`}
-                    >
-                      {entry.problem.level}级
-                    </span>
-                    <span className="text-xs text-gray-400 font-mono flex-shrink-0">
-                      {entry.problem.luoguId}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
-                    <span>
-                      {new Date(entry.addedAt).toLocaleDateString("zh-CN", {
-                        month: "2-digit",
-                        day: "2-digit",
-                      })}{" "}
-                      加入
-                    </span>
-                    {entry.mastered ? (
-                      <span className="font-medium text-green-600">已掌握</span>
-                    ) : (
-                      <span className="font-medium text-red-500">待解决</span>
-                    )}
-                  </div>
-                </div>
+                    />
 
-                {/* 操作按钮 */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => router.push(`/problems/${entry.problemId}`)}
-                    className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-                  >
-                    去做题
-                  </button>
-                  <button
-                    onClick={() =>
-                      setAiProblem({ id: entry.problemId, title: entry.problem.title })
-                    }
-                    className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100"
-                  >
-                    错题分析
-                  </button>
-                  <button
-                    onClick={() => handleRemove(entry.problemId)}
-                    className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-red-500"
-                  >
-                    移除
-                  </button>
+                    {/* 题目信息 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-gray-900 truncate">
+                          {entry.problem.title}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
+                            LEVEL_COLORS[entry.problem.level] || "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {entry.problem.level}级
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono flex-shrink-0">
+                          {entry.problem.luoguId}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
+                        <span>
+                          {new Date(entry.addedAt).toLocaleDateString("zh-CN", {
+                            month: "2-digit",
+                            day: "2-digit",
+                          })}{" "}
+                          加入
+                        </span>
+                        {entry.mastered ? (
+                          <span className="font-medium text-green-600">已掌握</span>
+                        ) : (
+                          <span className="font-medium text-red-500">待解决</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 操作按钮 */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => router.push(`/problems/${entry.problemId}`)}
+                        className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                      >
+                        去做题
+                      </button>
+                      <button
+                        onClick={() =>
+                          hasAnalysis ? handleCloseAnalysis(entry.problemId) : handleAnalyze(entry.problemId)
+                        }
+                        disabled={isAnalyzing}
+                        className={`rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+                          hasAnalysis
+                            ? "border-purple-300 bg-purple-600 text-white hover:bg-purple-700"
+                            : "border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100"
+                        }`}
+                      >
+                        {isAnalyzing ? "分析中..." : hasAnalysis ? "收起分析" : "错题分析"}
+                      </button>
+                      <button
+                        onClick={() => handleRemove(entry.problemId)}
+                        className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-red-500"
+                      >
+                        移除
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 内联分析结果区 */}
+                  {hasAnalysis && (
+                    <div className="border-t border-purple-100 bg-purple-50 px-5 py-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                          错题分析
+                        </span>
+                        {!isAnalyzing && analysisText && (
+                          <button
+                            onClick={() => handleAnalyze(entry.problemId)}
+                            className="text-xs text-purple-500 hover:text-purple-700 hover:underline"
+                          >
+                            重新分析
+                          </button>
+                        )}
+                      </div>
+
+                      {isAnalyzing && !analysisText ? (
+                        <div className="text-sm text-purple-400">正在分析代码错误...</div>
+                      ) : (
+                        <>
+                          <div className="prose prose-sm max-w-none text-gray-800 prose-code:bg-purple-100 prose-code:px-1 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                            <Markdown
+                              remarkPlugins={[remarkGfm, remarkMath]}
+                              rehypePlugins={[rehypeKatex]}
+                            >
+                              {analysisText}
+                            </Markdown>
+                          </div>
+                          {!isAnalyzing && (
+                            <div className="mt-4 pt-3 border-t border-purple-200">
+                              <button
+                                onClick={() => router.push(`/problems/${entry.problemId}`)}
+                                className="text-sm text-purple-700 font-medium hover:underline"
+                              >
+                                去题目页面继续和 AI 老师讨论 →
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
-
-      {/* AI 分析弹窗 */}
-      {aiProblem && (
-        <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/30 p-4">
-          <div className="flex h-[70vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
-            {/* 弹窗标题栏 */}
-            <div className="flex items-center justify-between border-b px-4 py-3">
-              <div>
-                <span className="text-sm font-semibold text-gray-900">错题分析</span>
-                <span className="ml-2 text-xs text-gray-400 truncate max-w-[200px] inline-block align-middle">
-                  {aiProblem.title}
-                </span>
-              </div>
-              <button
-                onClick={() => setAiProblem(null)}
-                className="text-gray-400 hover:text-gray-700 text-lg leading-none"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* ChatPanel：错题分析模式 */}
-            <div className="flex-1 overflow-hidden">
-              <ChatPanel
-                problemId={aiProblem.id}
-                code=""
-                mode="analysis"
-                title="错题分析"
-                initialMessage={ANALYSIS_TRIGGER}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
