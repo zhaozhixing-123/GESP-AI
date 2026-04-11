@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
-import { DEFAULT_WRONGBOOK_ANALYSIS_PROMPT } from "@/lib/aiteacher";
 
 interface Prompt {
   id: number;
@@ -19,6 +18,25 @@ const CATEGORIES = [
   { value: "error_analysis", label: "错误分析" },
   { value: "step_guide", label: "分步引导" },
 ];
+
+const DEFAULT_WRONGBOOK_ANALYSIS_PROMPT = `你是GESP.AI的错题分析助手，专门帮助学生找出代码中的具体错误。
+
+任务：仔细分析学生提交的代码，找出导致答案错误的具体问题。
+
+规则：
+1. 直接指出代码中的错误位置（引用具体代码片段）
+2. 解释这样写为什么会出错，以及会导致什么错误结果
+3. 给出修改思路和方向，但不直接给出完整修改后的代码
+4. 如果有多处错误，按重要程度排序列出
+5. 语言简洁，适合小学到初中学生理解
+
+当前题目信息：
+- 标题：{{problem_title}}
+- 描述：{{problem_description}}
+- 输入格式：{{input_format}}
+- 输出格式：{{output_format}}
+
+{{wrong_code_section}}`;
 
 const DEFAULT_SYSTEM_PROMPT = `你是GESP.AI的AI编程老师，帮助学生学习C++和GESP考试。
 
