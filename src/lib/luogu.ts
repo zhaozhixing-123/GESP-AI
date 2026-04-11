@@ -97,6 +97,12 @@ export async function fetchLuoguProblem(
     output: String(s[1] ?? s.output ?? "").trim(),
   }));
 
+  // 调试：打印原始标签相关字段
+  console.log(`[luogu-debug] ${p.pid} p.tags:`, JSON.stringify(p.tags));
+  console.log(`[luogu-debug] ${p.pid} raw.tags:`, JSON.stringify(raw.tags)?.slice(0, 200));
+  const rawKeys = Object.keys(raw).filter(k => k.toLowerCase().includes("tag"));
+  if (rawKeys.length) console.log(`[luogu-debug] ${p.pid} raw tag-keys:`, rawKeys);
+
   // 提取算法标签（兼容两种洛谷结构）
   // 格式A: p.tags = [14, 20]，raw.tags = { "14": { name: "递推/递归" } }
   // 格式B: p.tags = [{ id: 14, name: "递推/递归" }, ...]
