@@ -29,22 +29,18 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleSingleImport(luoguId: string, manualLevel?: number) {
-  const existing = await prisma.problem.findUnique({ where: { luoguId } });
-  if (existing) {
-    return Response.json(
-      { error: `题目 ${luoguId} 已存在（ID: ${existing.id}）` },
-      { status: 409 }
-    );
-  }
-
   const data = await fetchLuoguProblem(luoguId, manualLevel);
 
-  const problem = await prisma.problem.create({ data });
+  const problem = await prisma.problem.upsert({
+    where: { luoguId },
+    create: data,
+    update: { tags: data.tags },
+  });
 
   return Response.json(
     {
       message: "导入成功",
-      problem: { id: problem.id, luoguId: problem.luoguId, title: problem.title, level: problem.level },
+      problem: { id: problem.id, luoguId: problem.luoguId, title: problem.title, level: problem.level, tags: problem.tags },
     },
     { status: 201 }
   );

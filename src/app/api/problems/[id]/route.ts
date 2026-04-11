@@ -14,6 +14,7 @@ export async function GET(
         luoguId: true,
         title: true,
         level: true,
+        tags: true,
         description: true,
         inputFormat: true,
         outputFormat: true,

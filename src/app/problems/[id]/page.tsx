@@ -16,6 +16,7 @@ interface Problem {
   luoguId: string;
   title: string;
   level: number;
+  tags: string; // JSON array
   description: string;
   inputFormat: string;
   outputFormat: string;
@@ -362,7 +363,7 @@ export default function ProblemDetailPage() {
             >
               &larr; 返回题目列表
             </button>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-gray-900">{problem.title}</h1>
               <span
                 className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -372,6 +373,11 @@ export default function ProblemDetailPage() {
                 {problem.level}级
               </span>
               <span className="text-sm text-gray-400 font-mono">{problem.luoguId}</span>
+              {JSON.parse(problem.tags || "[]").map((tag: string) => (
+                <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700">
+                  {tag}
+                </span>
+              ))}
             </div>
 
             {/* 题目描述 */}

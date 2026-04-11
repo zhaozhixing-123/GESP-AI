@@ -43,6 +43,23 @@ export default function AdminProblemsPage() {
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
   const [importHistory, setImportHistory] = useState<Array<{ luoguId: string; title: string; id: number }>>([]);
 
+  // === 补打标签 ===
+  const [retagLoading, setRetagLoading] = useState(false);
+
+  async function handleRetag() {
+    if (!confirm("将为所有尚未打标签的题目从洛谷重新拉取知识点标签，可能需要几分钟，确定？")) return;
+    setRetagLoading(true);
+    try {
+      const res = await fetch("/api/admin/problems/retag", { method: "POST", headers, body: JSON.stringify({}) });
+      const data = await res.json();
+      alert(data.message);
+      fetchProblems();
+    } catch {
+      alert("补打标签失败，请重试");
+    }
+    setRetagLoading(false);
+  }
+
   // === 批量导入 ===
   const [batchUrl, setBatchUrl] = useState("");
   const [batchLevel, setBatchLevel] = useState("0");
@@ -493,6 +510,11 @@ export default function AdminProblemsPage() {
               </select>
               <span className="text-sm text-gray-400">{filteredProblems.length}/{problems.length} 题</span>
               <div className="flex gap-2 ml-auto">
+                <button onClick={handleRetag}
+                  disabled={retagLoading}
+                  className="rounded-md border border-sky-300 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+                  {retagLoading ? "回填中..." : "补打知识点标签"}
+                </button>
                 <button onClick={handleClearAll}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
                   清空全部

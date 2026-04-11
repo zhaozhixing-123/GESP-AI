@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const [problems, total] = await Promise.all([
       prisma.problem.findMany({
         where,
-        select: { id: true, luoguId: true, title: true, level: true },
+        select: { id: true, luoguId: true, title: true, level: true, tags: true },
         orderBy: { luoguId: "asc" },
         skip: (page - 1) * pageSize,
         take: pageSize,

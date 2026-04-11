@@ -9,6 +9,7 @@ interface Problem {
   luoguId: string;
   title: string;
   level: number;
+  tags: string; // JSON array
 }
 
 const LEVEL_COLORS: Record<number, string> = {
@@ -131,33 +132,52 @@ export default function ProblemsPage() {
                 <tr className="border-b bg-gray-50 text-left text-sm text-gray-500">
                   <th className="px-4 py-3 font-medium">编号</th>
                   <th className="px-4 py-3 font-medium">题目</th>
+                  <th className="px-4 py-3 font-medium">知识点</th>
                   <th className="px-4 py-3 font-medium">级别</th>
                 </tr>
               </thead>
               <tbody>
-                {problems.map((p) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => router.push(`/problems/${p.id}`)}
-                    className="cursor-pointer border-b last:border-b-0 hover:bg-blue-50 transition"
-                  >
-                    <td className="px-4 py-3 text-sm text-gray-500 font-mono">
-                      {p.luoguId}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {p.title}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          LEVEL_COLORS[p.level] || "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {p.level}级
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {problems.map((p) => {
+                  const tags: string[] = JSON.parse(p.tags || "[]");
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => router.push(`/problems/${p.id}`)}
+                      className="cursor-pointer border-b last:border-b-0 hover:bg-blue-50 transition"
+                    >
+                      <td className="px-4 py-3 text-sm text-gray-500 font-mono whitespace-nowrap">
+                        {p.luoguId}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">
+                        {p.title}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {tags.length > 3 && (
+                            <span className="text-xs text-gray-400">+{tags.length - 3}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${
+                            LEVEL_COLORS[p.level] || "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {p.level}级
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -19,6 +19,7 @@ interface WrongBookEntry {
     luoguId: string;
     title: string;
     level: number;
+    tags: string; // JSON array
   };
 }
 
@@ -284,6 +285,12 @@ export default function WrongBookPage() {
                         <span className="text-xs text-gray-400 font-mono flex-shrink-0">
                           {entry.problem.luoguId}
                         </span>
+                        {/* 知识点标签 */}
+                        {JSON.parse(entry.problem.tags || "[]").map((tag: string) => (
+                          <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700 flex-shrink-0">
+                            {tag}
+                          </span>
+                        ))}
                         {/* 错误类型标签 */}
                         {errorType && (
                           <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700 flex-shrink-0">

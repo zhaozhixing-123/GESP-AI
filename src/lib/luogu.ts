@@ -35,6 +35,7 @@ export interface LuoguProblemData {
   outputFormat: string;
   samples: string;
   testCases: string;
+  tags: string; // JSON: ["递推/递归", "动态规划"]
 }
 
 /** 拉取单道洛谷题目 */
@@ -96,6 +97,13 @@ export async function fetchLuoguProblem(
     output: String(s[1] ?? s.output ?? "").trim(),
   }));
 
+  // 提取算法标签
+  const tagDict: Record<string, { name: string }> = raw.tags || {};
+  const tagIds: number[] = p.tags || [];
+  const tagNames = tagIds
+    .map((id) => tagDict[String(id)]?.name)
+    .filter((name): name is string => !!name);
+
   return {
     luoguId: p.pid,
     title: p.title,
@@ -105,6 +113,7 @@ export async function fetchLuoguProblem(
     outputFormat: outputFormat || "暂无",
     samples: JSON.stringify(samples),
     testCases: "[]",
+    tags: JSON.stringify(tagNames),
   };
 }
 

@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       orderBy: { addedAt: "desc" },
       include: {
         problem: {
-          select: { id: true, luoguId: true, title: true, level: true },
+          select: { id: true, luoguId: true, title: true, level: true, tags: true },
         },
       },
     });
