@@ -40,17 +40,19 @@ export default function WrongBookPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "mastered">("all");
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
 
-  // 错题分析状态：problemId -> 分析文本
+  // 分析文本：problemId -> 文本（当前会话内，展开时显示）
   const [analyses, setAnalyses] = useState<Record<number, string>>({});
+  // 错误类型标签：problemId -> 类型字符串（持久化到 localStorage）
+  const [errorTypes, setErrorTypes] = useState<Record<number, string>>({});
   // 正在分析中的 problemId 集合
   const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
+  // 已展开分析面板的 problemId 集合
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // localStorage key 工具函数
-  function analysisKey(problemId: number) {
-    return `wb_analysis_${problemId}`;
-  }
+  function analysisKey(problemId: number) { return `wb_analysis_${problemId}`; }
+  function errorTypeKey(problemId: number) { return `wb_errtype_${problemId}`; }
 
   useEffect(() => {
     fetch("/api/wrongbook", {
@@ -60,13 +62,13 @@ export default function WrongBookPage() {
       .then((data) => {
         const entries: WrongBookEntry[] = data.entries || [];
         setEntries(entries);
-        // 从 localStorage 读取已缓存的分析结果，自动展开
-        const cached: Record<number, string> = {};
+        // 只恢复错误类型标签（badge），不自动展开分析内容
+        const types: Record<number, string> = {};
         for (const entry of entries) {
-          const saved = localStorage.getItem(analysisKey(entry.problemId));
-          if (saved) cached[entry.problemId] = saved;
+          const t = localStorage.getItem(errorTypeKey(entry.problemId));
+          if (t) types[entry.problemId] = t;
         }
-        if (Object.keys(cached).length > 0) setAnalyses(cached);
+        setErrorTypes(types);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -78,20 +80,21 @@ export default function WrongBookPage() {
       headers: { Authorization: `Bearer ${token}` },
     });
     setEntries((prev) => prev.filter((e) => e.problemId !== problemId));
-    setAnalyses((prev) => {
-      const next = { ...prev };
-      delete next[problemId];
-      return next;
-    });
+    setAnalyses((prev) => { const n = { ...prev }; delete n[problemId]; return n; });
+    setErrorTypes((prev) => { const n = { ...prev }; delete n[problemId]; return n; });
+    setExpandedIds((prev) => { const n = new Set(prev); n.delete(problemId); return n; });
     localStorage.removeItem(analysisKey(problemId));
+    localStorage.removeItem(errorTypeKey(problemId));
   }
 
   async function handleAnalyze(problemId: number) {
     if (analyzingIds.has(problemId)) return;
 
     setAnalyzingIds((prev) => new Set(prev).add(problemId));
+    setExpandedIds((prev) => new Set(prev).add(problemId));
     setAnalyses((prev) => ({ ...prev, [problemId]: "" }));
     localStorage.removeItem(analysisKey(problemId));
+    localStorage.removeItem(errorTypeKey(problemId));
 
     try {
       const res = await fetch("/api/wrongbook/analyze", {
@@ -109,6 +112,7 @@ export default function WrongBookPage() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
+      let typeExtracted = false;
 
       if (reader) {
         while (true) {
@@ -121,30 +125,46 @@ export default function WrongBookPage() {
               const data = JSON.parse(line.slice(6));
               if (data.text) {
                 fullText += data.text;
-                setAnalyses((prev) => ({ ...prev, [problemId]: fullText }));
+                // 提取错误类型标签（流式，一旦出现即提取）
+                if (!typeExtracted) {
+                  const match = fullText.match(/【错误类型：(.+?)】/);
+                  if (match) {
+                    const errType = match[1].trim();
+                    typeExtracted = true;
+                    setErrorTypes((prev) => ({ ...prev, [problemId]: errType }));
+                    localStorage.setItem(errorTypeKey(problemId), errType);
+                  }
+                }
+                // 展示时去掉第一行标签
+                const display = fullText.replace(/【错误类型：.+?】\n?/, "").trimStart();
+                setAnalyses((prev) => ({ ...prev, [problemId]: display }));
               }
             } catch {}
           }
         }
       }
-      // 分析完成后缓存到 localStorage，刷新后自动展示
+
       if (fullText) localStorage.setItem(analysisKey(problemId), fullText);
     } catch {
       setAnalyses((prev) => ({ ...prev, [problemId]: "**网络错误，请重试**" }));
     }
 
-    setAnalyzingIds((prev) => {
-      const next = new Set(prev);
-      next.delete(problemId);
-      return next;
-    });
+    setAnalyzingIds((prev) => { const n = new Set(prev); n.delete(problemId); return n; });
   }
 
-  function handleCloseAnalysis(problemId: number) {
-    setAnalyses((prev) => {
-      const next = { ...prev };
-      delete next[problemId];
-      return next;
+  function toggleExpand(problemId: number) {
+    // 如果有缓存但内存里没有，先从 localStorage 恢复
+    if (!expandedIds.has(problemId) && !analyses[problemId]) {
+      const cached = localStorage.getItem(analysisKey(problemId));
+      if (cached) {
+        const display = cached.replace(/【错误类型：.+?】\n?/, "").trimStart();
+        setAnalyses((prev) => ({ ...prev, [problemId]: display }));
+      }
+    }
+    setExpandedIds((prev) => {
+      const n = new Set(prev);
+      n.has(problemId) ? n.delete(problemId) : n.add(problemId);
+      return n;
     });
   }
 
@@ -233,7 +253,9 @@ export default function WrongBookPage() {
             {filtered.map((entry) => {
               const isAnalyzing = analyzingIds.has(entry.problemId);
               const analysisText = analyses[entry.problemId];
-              const hasAnalysis = analysisText !== undefined;
+              const isExpanded = expandedIds.has(entry.problemId);
+              const errorType = errorTypes[entry.problemId];
+              const hasCached = !!localStorage.getItem(analysisKey(entry.problemId));
 
               return (
                 <div key={entry.id} className="rounded-lg bg-white shadow-sm overflow-hidden">
@@ -262,6 +284,12 @@ export default function WrongBookPage() {
                         <span className="text-xs text-gray-400 font-mono flex-shrink-0">
                           {entry.problem.luoguId}
                         </span>
+                        {/* 错误类型标签 */}
+                        {errorType && (
+                          <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700 flex-shrink-0">
+                            {errorType}
+                          </span>
+                        )}
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
                         <span>
@@ -287,19 +315,27 @@ export default function WrongBookPage() {
                       >
                         去做题
                       </button>
-                      <button
-                        onClick={() =>
-                          hasAnalysis ? handleCloseAnalysis(entry.problemId) : handleAnalyze(entry.problemId)
-                        }
-                        disabled={isAnalyzing}
-                        className={`rounded-md border px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
-                          hasAnalysis
-                            ? "border-purple-300 bg-purple-600 text-white hover:bg-purple-700"
-                            : "border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100"
-                        }`}
-                      >
-                        {isAnalyzing ? "分析中..." : hasAnalysis ? "收起分析" : "错题分析"}
-                      </button>
+                      {/* 已有缓存：显示展开/收起；否则显示「错题分析」发起分析 */}
+                      {hasCached || isAnalyzing ? (
+                        <button
+                          onClick={() => toggleExpand(entry.problemId)}
+                          disabled={isAnalyzing && !analysisText}
+                          className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+                        >
+                          {isAnalyzing
+                            ? "分析中..."
+                            : isExpanded
+                            ? "收起分析"
+                            : "查看分析"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleAnalyze(entry.problemId)}
+                          className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100"
+                        >
+                          错题分析
+                        </button>
+                      )}
                       <button
                         onClick={() => handleRemove(entry.problemId)}
                         className="rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-red-500"
@@ -309,14 +345,14 @@ export default function WrongBookPage() {
                     </div>
                   </div>
 
-                  {/* 内联分析结果区 */}
-                  {hasAnalysis && (
+                  {/* 内联分析结果区（展开时显示） */}
+                  {isExpanded && (
                     <div className="border-t border-purple-100 bg-purple-50 px-5 py-4">
                       <div className="mb-3 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-purple-700 uppercase tracking-wide">
+                        <span className="text-xs font-semibold text-purple-700 tracking-wide">
                           错题分析
                         </span>
-                        {!isAnalyzing && analysisText && (
+                        {!isAnalyzing && (
                           <button
                             onClick={() => handleAnalyze(entry.problemId)}
                             className="text-xs text-purple-500 hover:text-purple-700 hover:underline"
