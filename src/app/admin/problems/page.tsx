@@ -45,17 +45,36 @@ export default function AdminProblemsPage() {
 
   // === 补打标签 ===
   const [retagLoading, setRetagLoading] = useState(false);
+  const [retagStatus, setRetagStatus] = useState("");
 
   async function handleRetag() {
     if (!confirm("将为所有尚未打标签的题目从洛谷重新拉取知识点标签，可能需要几分钟，确定？")) return;
     setRetagLoading(true);
+    setRetagStatus("准备中...");
     try {
       const res = await fetch("/api/admin/problems/retag", { method: "POST", headers, body: JSON.stringify({}) });
-      const data = await res.json();
-      alert(data.message);
-      fetchProblems();
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.done) {
+                setRetagStatus(data.message);
+                fetchProblems();
+              } else {
+                setRetagStatus(`${data.current}/${data.total} ${data.luoguId} ${data.status === "ok" ? "✓" : "✗"}`);
+              }
+            } catch {}
+          }
+        }
+      }
     } catch {
-      alert("补打标签失败，请重试");
+      setRetagStatus("网络错误，请重试");
     }
     setRetagLoading(false);
   }
@@ -515,6 +534,9 @@ export default function AdminProblemsPage() {
                   className="rounded-md border border-sky-300 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
                   {retagLoading ? "回填中..." : "补打知识点标签"}
                 </button>
+                {retagStatus && (
+                  <span className="text-xs text-sky-600">{retagStatus}</span>
+                )}
                 <button onClick={handleClearAll}
                   className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50">
                   清空全部

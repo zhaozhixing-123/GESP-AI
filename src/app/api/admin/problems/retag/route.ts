@@ -5,8 +5,7 @@ import { fetchLuoguProblem } from "@/lib/luogu";
 
 /**
  * POST /api/admin/problems/retag
- * 批量回填所有 tags 为 "[]" 的题目的算法标签
- * 支持传 { all: true } 强制更新全部题目
+ * 流式返回进度，避免长时间请求超时
  */
 export async function POST(request: NextRequest) {
   const auth = requireAdmin(request);
@@ -20,35 +19,50 @@ export async function POST(request: NextRequest) {
     select: { id: true, luoguId: true },
   });
 
-  if (problems.length === 0) {
-    return Response.json({ message: "所有题目已有标签，无需回填" });
-  }
+  const encoder = new TextEncoder();
 
-  const results: Array<{ luoguId: string; tags: string[]; status: "ok" | "error"; error?: string }> = [];
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(data: object) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      }
 
-  for (let i = 0; i < problems.length; i++) {
-    const { id, luoguId } = problems[i];
-    console.log(`[retag] ${i + 1}/${problems.length}: ${luoguId}`);
-    try {
-      const data = await fetchLuoguProblem(luoguId);
-      await prisma.problem.update({ where: { id }, data: { tags: data.tags } });
-      results.push({ luoguId, tags: JSON.parse(data.tags), status: "ok" });
-    } catch (e: any) {
-      console.error(`[retag] ${luoguId} 失败:`, e.message);
-      results.push({ luoguId, tags: [], status: "error", error: e.message });
-    }
-    if (i < problems.length - 1) {
-      await new Promise((r) => setTimeout(r, 2500));
-    }
-  }
+      if (problems.length === 0) {
+        send({ done: true, message: "所有题目已有标签，无需回填" });
+        controller.close();
+        return;
+      }
 
-  const successCount = results.filter((r) => r.status === "ok").length;
-  const failCount = results.filter((r) => r.status === "error").length;
+      let success = 0;
+      let failed = 0;
 
-  return Response.json({
-    message: `回填完成：成功 ${successCount}，失败 ${failCount}，共 ${problems.length} 题`,
-    success: successCount,
-    failed: failCount,
-    results,
+      for (let i = 0; i < problems.length; i++) {
+        const { id, luoguId } = problems[i];
+        try {
+          const data = await fetchLuoguProblem(luoguId);
+          await prisma.problem.update({ where: { id }, data: { tags: data.tags } });
+          const tags = JSON.parse(data.tags) as string[];
+          success++;
+          send({ luoguId, tags, status: "ok", current: i + 1, total: problems.length });
+        } catch (e: any) {
+          failed++;
+          send({ luoguId, status: "error", error: e.message, current: i + 1, total: problems.length });
+        }
+        if (i < problems.length - 1) {
+          await new Promise((r) => setTimeout(r, 2500));
+        }
+      }
+
+      send({ done: true, message: `回填完成：成功 ${success}，失败 ${failed}，共 ${problems.length} 题` });
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
   });
 }
