@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         const { id, luoguId, title, description } = problems[i];
         try {
           const msg = await client.messages.create({
-            model: "claude-haiku-4-5-20251001",
+            model: "claude-opus-4-6",
             max_tokens: 64,
             system: `你是一个 GESP C++ 算法题分类助手。从以下标签中为题目选出最匹配的 1-3 个，优先选最核心的考察点，只输出 JSON 数组，不要其他内容。例如：["动态规划"] 或 ["DFS","树"]。
 可用标签：${GESP_TAGS.join("、")}`,
@@ -92,9 +92,8 @@ export async function POST(request: NextRequest) {
           failed++;
           send({ luoguId, status: "error", error: e.message, current: i + 1, total: problems.length });
         }
-        // haiku 速度快，间隔短一点
         if (i < problems.length - 1) {
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 800));
         }
       }
 
