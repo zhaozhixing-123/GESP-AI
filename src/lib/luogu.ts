@@ -97,12 +97,20 @@ export async function fetchLuoguProblem(
     output: String(s[1] ?? s.output ?? "").trim(),
   }));
 
-  // 提取算法标签
-  const tagDict: Record<string, { name: string }> = raw.tags || {};
-  const tagIds: number[] = p.tags || [];
-  const tagNames = tagIds
-    .map((id) => tagDict[String(id)]?.name)
-    .filter((name): name is string => !!name);
+  // 提取算法标签（兼容两种洛谷结构）
+  // 格式A: p.tags = [14, 20]，raw.tags = { "14": { name: "递推/递归" } }
+  // 格式B: p.tags = [{ id: 14, name: "递推/递归" }, ...]
+  const rawTags: any[] = p.tags || [];
+  let tagNames: string[];
+  if (rawTags.length > 0 && typeof rawTags[0] === "object") {
+    tagNames = rawTags.map((t: any) => t.name ?? t.title).filter(Boolean);
+  } else {
+    const tagDict: Record<string, { name: string }> = raw.tags || {};
+    tagNames = (rawTags as number[])
+      .map((id) => tagDict[String(id)]?.name)
+      .filter((name): name is string => !!name);
+  }
+  console.log(`[luogu] ${p.pid} tags:`, tagNames);
 
   return {
     luoguId: p.pid,
