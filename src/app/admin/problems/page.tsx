@@ -87,6 +87,7 @@ export default function AdminProblemsPage() {
 
   async function handleClearTags() {
     if (!confirm("将清空所有题目的知识点标签，确定？")) return;
+    if (!confirm("再次确认：真的要清空全部标签吗？")) return;
     const res = await fetch("/api/admin/problems/clear-tags", { method: "POST", headers });
     const data = await res.json();
     alert(data.message || data.error);
@@ -98,10 +99,6 @@ export default function AdminProblemsPage() {
     await runAiTag(false);
   }
 
-  async function handleAiTagAll() {
-    if (!confirm("将用 AI 重新为【全部】题目打标签（覆盖已有标签），确定？")) return;
-    await runAiTag(true);
-  }
 
   // === 批量导入 ===
   const [batchUrl, setBatchUrl] = useState("");
@@ -563,11 +560,7 @@ export default function AdminProblemsPage() {
                   className="rounded-md border border-sky-300 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
                   {aiTagLoading ? "打标中..." : "AI 打标签"}
                 </button>
-                <button onClick={handleAiTagAll}
-                  disabled={aiTagLoading}
-                  className="rounded-md border border-orange-300 px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50">
-                  全部重新打标
-                </button>
+
                 {aiTagStatus && (
                   <span className="text-xs text-sky-600">{aiTagStatus}</span>
                 )}
