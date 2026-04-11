@@ -84,6 +84,34 @@ export default function AdminProblemsPage() {
     );
   }
 
+  async function handleAiTagAll() {
+    if (!confirm("将用 AI 重新为【全部】题目打标签（覆盖已有标签），确定？")) return;
+    setAiTagLoading(true);
+    setAiTagStatus("准备中...");
+    try {
+      const res = await fetch("/api/admin/problems/ai-tag", { method: "POST", headers, body: JSON.stringify({ all: true }) });
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.done) { setAiTagStatus(data.message); fetchProblems(); }
+              else setAiTagStatus(`${data.current}/${data.total} ${data.luoguId} ${data.status === "ok" ? "✓" : "✗"}`);
+            } catch {}
+          }
+        }
+      }
+    } catch {
+      setAiTagStatus("网络错误，请重试");
+    }
+    setAiTagLoading(false);
+  }
+
   // === 批量导入 ===
   const [batchUrl, setBatchUrl] = useState("");
   const [batchLevel, setBatchLevel] = useState("0");
@@ -538,6 +566,11 @@ export default function AdminProblemsPage() {
                   disabled={aiTagLoading}
                   className="rounded-md border border-sky-300 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-50">
                   {aiTagLoading ? "打标中..." : "AI 打标签"}
+                </button>
+                <button onClick={handleAiTagAll}
+                  disabled={aiTagLoading}
+                  className="rounded-md border border-orange-300 px-3 py-1.5 text-sm font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50">
+                  全部重新打标
                 </button>
                 {aiTagStatus && (
                   <span className="text-xs text-sky-600">{aiTagStatus}</span>
