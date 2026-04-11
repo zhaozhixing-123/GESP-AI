@@ -47,13 +47,26 @@ export default function WrongBookPage() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
+  // localStorage key 工具函数
+  function analysisKey(problemId: number) {
+    return `wb_analysis_${problemId}`;
+  }
+
   useEffect(() => {
     fetch("/api/wrongbook", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
       .then((data) => {
-        setEntries(data.entries || []);
+        const entries: WrongBookEntry[] = data.entries || [];
+        setEntries(entries);
+        // 从 localStorage 读取已缓存的分析结果，自动展开
+        const cached: Record<number, string> = {};
+        for (const entry of entries) {
+          const saved = localStorage.getItem(analysisKey(entry.problemId));
+          if (saved) cached[entry.problemId] = saved;
+        }
+        if (Object.keys(cached).length > 0) setAnalyses(cached);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -70,6 +83,7 @@ export default function WrongBookPage() {
       delete next[problemId];
       return next;
     });
+    localStorage.removeItem(analysisKey(problemId));
   }
 
   async function handleAnalyze(problemId: number) {
@@ -77,6 +91,7 @@ export default function WrongBookPage() {
 
     setAnalyzingIds((prev) => new Set(prev).add(problemId));
     setAnalyses((prev) => ({ ...prev, [problemId]: "" }));
+    localStorage.removeItem(analysisKey(problemId));
 
     try {
       const res = await fetch("/api/wrongbook/analyze", {
@@ -112,6 +127,8 @@ export default function WrongBookPage() {
           }
         }
       }
+      // 分析完成后缓存到 localStorage，刷新后自动展示
+      if (fullText) localStorage.setItem(analysisKey(problemId), fullText);
     } catch {
       setAnalyses((prev) => ({ ...prev, [problemId]: "**网络错误，请重试**" }));
     }
@@ -313,7 +330,7 @@ export default function WrongBookPage() {
                         <div className="text-sm text-purple-400">正在分析代码错误...</div>
                       ) : (
                         <>
-                          <div className="prose prose-sm max-w-none text-gray-800 prose-code:bg-purple-100 prose-code:px-1 prose-code:rounded prose-pre:bg-gray-900 prose-pre:text-gray-100">
+                          <div className="prose prose-sm max-w-none text-gray-800 [&_:not(pre)>code]:bg-purple-100 [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:rounded [&_:not(pre)>code]:text-purple-900 prose-pre:bg-gray-900 prose-pre:text-gray-100 [&_pre_code]:bg-transparent [&_pre_code]:text-gray-100">
                             <Markdown
                               remarkPlugins={[remarkGfm, remarkMath]}
                               rehypePlugins={[rehypeKatex]}
