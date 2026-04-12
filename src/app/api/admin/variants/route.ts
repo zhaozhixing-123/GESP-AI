@@ -65,7 +65,9 @@ async function handleSingle(problemId: number): Promise<Response> {
   const stream  = new ReadableStream({
     async start(controller) {
       function send(data: object) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch { /* 客户端已断开，静默忽略，生成继续 */ }
       }
 
       if (needed <= 0) {
@@ -184,7 +186,9 @@ async function handleBatch(request: NextRequest): Promise<Response> {
   const stream  = new ReadableStream({
     async start(controller) {
       function send(data: object) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch { /* 客户端已断开，静默忽略，生成继续 */ }
       }
 
       if (needProblems.length === 0) {
