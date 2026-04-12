@@ -84,13 +84,8 @@ END $$;
 -- WrongBook
 ALTER TABLE "WrongBook" ALTER COLUMN "problemId" DROP NOT NULL;
 ALTER TABLE "WrongBook" ADD COLUMN IF NOT EXISTS "variantId" INTEGER;
-
-DO $$ BEGIN
-  ALTER TABLE "WrongBook" ADD CONSTRAINT "WrongBook_userId_variantId_key"
-    UNIQUE ("userId", "variantId");
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
+CREATE UNIQUE INDEX IF NOT EXISTS "WrongBook_userId_variantId_key"
+  ON "WrongBook"("userId", "variantId");
 DO $$ BEGIN
   ALTER TABLE "WrongBook" ADD CONSTRAINT "WrongBook_variant_fkey"
     FOREIGN KEY ("variantId") REFERENCES "VariantProblem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -102,19 +97,13 @@ ALTER TABLE "WrongBookAnalysis" ALTER COLUMN "problemId" DROP NOT NULL;
 ALTER TABLE "WrongBookAnalysis" ALTER COLUMN "submissionId" DROP NOT NULL;
 ALTER TABLE "WrongBookAnalysis" ADD COLUMN IF NOT EXISTS "variantId" INTEGER;
 ALTER TABLE "WrongBookAnalysis" ADD COLUMN IF NOT EXISTS "variantSubmissionId" INTEGER;
-
-DO $$ BEGIN
-  ALTER TABLE "WrongBookAnalysis" ADD CONSTRAINT "WrongBookAnalysis_userId_variantId_key"
-    UNIQUE ("userId", "variantId");
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
+CREATE UNIQUE INDEX IF NOT EXISTS "WrongBookAnalysis_userId_variantId_key"
+  ON "WrongBookAnalysis"("userId", "variantId");
 DO $$ BEGIN
   ALTER TABLE "WrongBookAnalysis" ADD CONSTRAINT "WrongBookAnalysis_variantId_fkey"
     FOREIGN KEY ("variantId") REFERENCES "VariantProblem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
-
 DO $$ BEGIN
   ALTER TABLE "WrongBookAnalysis" ADD CONSTRAINT "WrongBookAnalysis_variantSubmissionId_fkey"
     FOREIGN KEY ("variantSubmissionId") REFERENCES "VariantSubmission"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -124,7 +113,6 @@ END $$;
 -- ChatHistory
 ALTER TABLE "ChatHistory" ALTER COLUMN "problemId" DROP NOT NULL;
 ALTER TABLE "ChatHistory" ADD COLUMN IF NOT EXISTS "variantId" INTEGER;
-
 DO $$ BEGIN
   ALTER TABLE "ChatHistory" ADD CONSTRAINT "ChatHistory_variantId_fkey"
     FOREIGN KEY ("variantId") REFERENCES "VariantProblem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
