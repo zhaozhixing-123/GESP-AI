@@ -136,6 +136,9 @@ export default function Navbar() {
               <Link href="/admin/prompts" className="text-sm text-gray-600 hover:text-gray-900">
                 提示词管理
               </Link>
+              <Link href="/admin/users" className="text-sm text-gray-600 hover:text-gray-900">
+                用户管理
+              </Link>
             </>
           )}
         </div>
@@ -152,14 +155,14 @@ export default function Navbar() {
 
               {renderSubscriptionBadge()}
 
-              <span className="text-sm text-gray-600">
+              <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
                 {user.username}
                 {user.role === "admin" && (
                   <span className="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
                     管理员
                   </span>
                 )}
-              </span>
+              </Link>
               <button
                 onClick={handleLogout}
                 className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
