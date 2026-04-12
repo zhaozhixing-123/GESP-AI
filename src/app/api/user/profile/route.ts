@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   if (!auth) return Response.json({ error: "未登录" }, { status: 401 });
 
   const user = await prisma.user.findUnique({
-    where: { id: auth.id },
+    where: { id: auth.userId },
     select: {
       id: true,
       username: true,
@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest) {
     data.examDate = body.examDate ? new Date(body.examDate) : null;
 
   const updated = await prisma.user.update({
-    where: { id: auth.id },
+    where: { id: auth.userId },
     data,
     select: { phone: true, targetLevel: true, examDate: true },
   });
