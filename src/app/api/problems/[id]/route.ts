@@ -3,10 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { checkFreeLimit } from "@/lib/subscription";
 
-async function handleVariantGet(userId: number, variantId: number): Promise<Response> {
+async function handleVariantGet(userId: number, variantId: number, isAdmin: boolean): Promise<Response> {
   if (isNaN(variantId)) return Response.json({ error: "无效变形题 ID" }, { status: 404 });
 
-  // 先检查 genStatus，避免两次查询走不同路径
   const full = await prisma.variantProblem.findUnique({
     where: { id: variantId },
     select: {
@@ -22,21 +21,23 @@ async function handleVariantGet(userId: number, variantId: number): Promise<Resp
 
   const variant = full;
 
-  // 鉴权：用户必须有解锁记录
-  const readyVariants = await prisma.variantProblem.findMany({
-    where: { sourceId: full.sourceId, genStatus: "ready" },
-    select: { id: true },
-    orderBy: { createdAt: "asc" },
-  });
+  // 管理员跳过解锁检查
+  if (!isAdmin) {
+    const readyVariants = await prisma.variantProblem.findMany({
+      where: { sourceId: full.sourceId, genStatus: "ready" },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
 
-  const idx   = readyVariants.findIndex((v) => v.id === variantId);
-  const batch = idx < 2 ? 1 : 2;
+    const idx   = readyVariants.findIndex((v) => v.id === variantId);
+    const batch = idx < 2 ? 1 : 2;
 
-  const unlock = await prisma.variantUnlock.findUnique({
-    where: { userId_problemId_batch: { userId, problemId: full.sourceId, batch } },
-  });
+    const unlock = await prisma.variantUnlock.findUnique({
+      where: { userId_problemId_batch: { userId, problemId: full.sourceId, batch } },
+    });
 
-  if (!unlock) return Response.json({ error: "变形题不存在" }, { status: 404 });
+    if (!unlock) return Response.json({ error: "变形题不存在" }, { status: 404 });
+  }
 
   // 获取源题 luoguId 供前端显示
   const source = await prisma.problem.findUnique({
@@ -61,7 +62,7 @@ export async function GET(
 
     // id 以 "v" 开头表示变形题，如 "v42"
     if (id.startsWith("v")) {
-      return handleVariantGet(user.userId, parseInt(id.slice(1)));
+      return handleVariantGet(user.userId, parseInt(id.slice(1)), user.role === "admin");
     }
 
     const problemId = parseInt(id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 
 interface Problem {
@@ -19,6 +19,15 @@ interface ImportResult {
   id: number;
   status: "ok" | "error";
   error?: string;
+}
+
+interface VariantDetail {
+  id: number;
+  title: string;
+  genStatus: string;
+  genError?: string;
+  verifiedCount: number;
+  createdAt: string;
 }
 
 export default function AdminProblemsPage() {
@@ -286,12 +295,31 @@ export default function AdminProblemsPage() {
   }
 
   // --- 变形题生成 ---
-  const [variantSummary, setVariantSummary] = useState<Record<number, Record<string, number>>>({});
+  const [variantSummary, setVariantSummary]     = useState<Record<number, Record<string, number>>>({});
   const [variantGenRunning, setVariantGenRunning] = useState<number | null>(null);
-  const [variantGenMsg, setVariantGenMsg] = useState("");
+  const [variantGenMsg, setVariantGenMsg]         = useState("");
   const [batchVariantRunning, setBatchVariantRunning] = useState(false);
   const [batchVariantProgress, setBatchVariantProgress] = useState("");
-  const [batchVariantResults, setBatchVariantResults] = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
+  const [batchVariantResults, setBatchVariantResults]   = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
+
+  // --- 变形题展开查看 ---
+  const [expandedProblemId, setExpandedProblemId] = useState<number | null>(null);
+  const [variantDetails, setVariantDetails]       = useState<Record<number, VariantDetail[]>>({});
+
+  async function toggleVariantExpand(problemId: number) {
+    if (expandedProblemId === problemId) {
+      setExpandedProblemId(null);
+      return;
+    }
+    setExpandedProblemId(problemId);
+    if (!variantDetails[problemId]) {
+      const res = await fetch(`/api/admin/variants?problemId=${problemId}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setVariantDetails((prev) => ({ ...prev, [problemId]: data.variants ?? [] }));
+      }
+    }
+  }
 
   async function fetchVariantSummary() {
     const res = await fetch("/api/admin/variants", { headers });
@@ -889,7 +917,8 @@ export default function AdminProblemsPage() {
                   </thead>
                   <tbody>
                     {filteredProblems.map((p) => (
-                      <tr key={p.id} className="border-b last:border-b-0">
+                      <Fragment key={p.id}>
+                      <tr className="border-b last:border-b-0">
                         <td className="px-4 py-3 text-sm font-mono text-gray-500">{p.luoguId}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{p.title}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{p.level}级</td>
@@ -917,18 +946,24 @@ export default function AdminProblemsPage() {
                         <td className="px-4 py-3 text-sm">
                           {(() => {
                             const s = variantSummary[p.id] ?? {};
-                            const ready      = s["ready"]      ?? 0;
+                            const ready        = s["ready"]      ?? 0;
                             const generating_v = s["generating"] ?? 0;
-                            const failed     = s["failed"]     ?? 0;
+                            const failed       = s["failed"]     ?? 0;
                             if (ready === 0 && generating_v === 0 && failed === 0) {
                               return <span className="text-gray-300">-</span>;
                             }
                             return (
-                              <span className={ready >= 4 ? "text-green-600" : "text-amber-600"}>
-                                {ready}/4
-                                {generating_v > 0 && <span className="ml-1 text-yellow-600">({generating_v}生成中)</span>}
-                                {failed > 0 && <span className="ml-1 text-red-500">({failed}失败)</span>}
-                              </span>
+                              <button
+                                onClick={() => toggleVariantExpand(p.id)}
+                                className="flex items-center gap-1 hover:opacity-70"
+                              >
+                                <span className="text-xs">{expandedProblemId === p.id ? "▼" : "▶"}</span>
+                                <span className={ready >= 4 ? "text-green-600" : "text-amber-600"}>
+                                  {ready}/4
+                                  {generating_v > 0 && <span className="ml-1 text-yellow-600">({generating_v}生成中)</span>}
+                                  {failed > 0 && <span className="ml-1 text-red-500">({failed}失败)</span>}
+                                </span>
+                              </button>
                             );
                           })()}
                         </td>
@@ -959,6 +994,57 @@ export default function AdminProblemsPage() {
                           <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">删除</button>
                         </td>
                       </tr>
+                      {expandedProblemId === p.id && (
+                        <tr className="border-b bg-amber-50">
+                          <td colSpan={7} className="px-6 py-3">
+                            {!variantDetails[p.id] ? (
+                              <span className="text-sm text-gray-400">加载中...</span>
+                            ) : variantDetails[p.id].length === 0 ? (
+                              <span className="text-sm text-gray-400">暂无变形题</span>
+                            ) : (
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-left text-xs text-gray-500">
+                                    <th className="pb-1 pr-4">ID</th>
+                                    <th className="pb-1 pr-4">标题</th>
+                                    <th className="pb-1 pr-4">状态</th>
+                                    <th className="pb-1 pr-4">测试点</th>
+                                    <th className="pb-1">操作</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {variantDetails[p.id].map((v) => (
+                                    <tr key={v.id} className="border-t border-amber-100">
+                                      <td className="py-1 pr-4 font-mono text-gray-400">v{v.id}</td>
+                                      <td className="py-1 pr-4 text-gray-800">{v.title}</td>
+                                      <td className="py-1 pr-4">
+                                        {v.genStatus === "ready"      && <span className="text-green-600">ready</span>}
+                                        {v.genStatus === "generating" && <span className="text-yellow-600">生成中</span>}
+                                        {v.genStatus === "failed"     && <span className="text-red-500" title={v.genError}>失败</span>}
+                                        {v.genStatus === "pending"    && <span className="text-gray-400">等待</span>}
+                                      </td>
+                                      <td className="py-1 pr-4 text-gray-500">{v.verifiedCount ?? 0}</td>
+                                      <td className="py-1">
+                                        {v.genStatus === "ready" && (
+                                          <a
+                                            href={`/problems/v${v.id}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-600 hover:underline"
+                                          >
+                                            预览
+                                          </a>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
