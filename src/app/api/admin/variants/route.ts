@@ -290,3 +290,33 @@ export async function GET(request: NextRequest) {
 
   return Response.json({ summary });
 }
+
+// ─── 删除单道变形题 ────────────────────────────────────────────────────────────
+
+export async function DELETE(request: NextRequest) {
+  const auth = requireAdmin(request);
+  if (auth instanceof Response) return auth;
+
+  const url = new URL(request.url);
+  const variantId = parseInt(url.searchParams.get("variantId") ?? "");
+  if (!variantId || isNaN(variantId)) {
+    return Response.json({ error: "缺少 variantId" }, { status: 400 });
+  }
+
+  const variant = await prisma.variantProblem.findUnique({
+    where: { id: variantId },
+    select: { id: true, sourceId: true },
+  });
+  if (!variant) return Response.json({ error: "变形题不存在" }, { status: 404 });
+
+  // 级联清理关联数据
+  await prisma.$transaction([
+    prisma.wrongBookAnalysis.deleteMany({ where: { variantId } }),
+    prisma.wrongBook.deleteMany({ where: { variantId } }),
+    prisma.chatHistory.deleteMany({ where: { variantId } }),
+    prisma.variantSubmission.deleteMany({ where: { variantId } }),
+    prisma.variantProblem.delete({ where: { id: variantId } }),
+  ]);
+
+  return Response.json({ deleted: true, sourceId: variant.sourceId });
+}

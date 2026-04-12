@@ -312,12 +312,29 @@ export default function AdminProblemsPage() {
       return;
     }
     setExpandedProblemId(problemId);
-    if (!variantDetails[problemId]) {
-      const res = await fetch(`/api/admin/variants?problemId=${problemId}`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setVariantDetails((prev) => ({ ...prev, [problemId]: data.variants ?? [] }));
-      }
+    await refreshVariantDetails(problemId);
+  }
+
+  async function refreshVariantDetails(problemId: number) {
+    const res = await fetch(`/api/admin/variants?problemId=${problemId}`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      setVariantDetails((prev) => ({ ...prev, [problemId]: data.variants ?? [] }));
+    }
+  }
+
+  async function handleDeleteVariant(variantId: number, problemId: number) {
+    if (!confirm(`确定删除变形题 v${variantId}？此操作不可撤销。`)) return;
+    const res = await fetch(`/api/admin/variants?variantId=${variantId}`, {
+      method: "DELETE",
+      headers,
+    });
+    if (res.ok) {
+      await refreshVariantDetails(problemId);
+      await fetchVariantSummary();
+    } else {
+      const data = await res.json();
+      alert(data.error ?? "删除失败");
     }
   }
 
@@ -1024,7 +1041,7 @@ export default function AdminProblemsPage() {
                                         {v.genStatus === "pending"    && <span className="text-gray-400">等待</span>}
                                       </td>
                                       <td className="py-1 pr-4 text-gray-500">{v.verifiedCount ?? 0}</td>
-                                      <td className="py-1">
+                                      <td className="py-1 flex items-center gap-3">
                                         {v.genStatus === "ready" && (
                                           <a
                                             href={`/problems/v${v.id}`}
@@ -1035,6 +1052,12 @@ export default function AdminProblemsPage() {
                                             预览
                                           </a>
                                         )}
+                                        <button
+                                          onClick={() => handleDeleteVariant(v.id, p.id)}
+                                          className="text-red-500 hover:underline text-xs"
+                                        >
+                                          删除
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}
