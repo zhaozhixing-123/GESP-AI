@@ -1,11 +1,11 @@
 import jwt from "jsonwebtoken";
 import { NextRequest } from "next/server";
 
-const JWT_SECRET: string = (() => {
+function getJwtSecret(): string {
   const s = process.env.JWT_SECRET;
   if (!s) throw new Error("JWT_SECRET 环境变量未设置");
   return s;
-})();
+}
 
 export interface JwtPayload {
   userId: number;
@@ -14,12 +14,12 @@ export interface JwtPayload {
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JwtPayload;
+    return jwt.verify(token, getJwtSecret()) as JwtPayload;
   } catch {
     return null;
   }
