@@ -248,7 +248,7 @@ export default function ProblemDetailPage() {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ code, stdin: runInput }),
+        body: JSON.stringify({ code, stdin: runInput, problemId: parseInt(id as string) }),
       });
       const data = await res.json();
       if (!res.ok) {

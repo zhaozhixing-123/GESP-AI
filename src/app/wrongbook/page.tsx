@@ -61,11 +61,16 @@ export default function WrongBookPage() {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   useEffect(() => {
-    const stored = localStorage.getItem("user");
-    if (stored) {
-      const u = JSON.parse(stored);
-      setIsPaid(u.isPaid ?? true);
-    }
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((data) => { if (data.user) setIsPaid(data.user.isPaid ?? true); })
+      .catch(() => {
+        // 降级：从 localStorage 读
+        const stored = localStorage.getItem("user");
+        if (stored) setIsPaid(JSON.parse(stored).isPaid ?? true);
+      });
   }, []);
 
   useEffect(() => {

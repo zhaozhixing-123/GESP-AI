@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "代码不能为空" }, { status: 400 });
     }
 
-    // 如果传了 problemId，用样例逐个运行并对比
-    if (problemId) {
+    // 如果传了 problemId 且没有自定义 stdin，用样例逐个运行并对比
+    if (problemId && stdin === undefined) {
       const problem = await prisma.problem.findUnique({
         where: { id: parseInt(problemId) },
         select: { samples: true },

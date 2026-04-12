@@ -47,10 +47,13 @@ export default function PaymentPage() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [timeLeft, setTimeLeft] = useState(300); // 秒
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) clearInterval(timerRef.current);
+      if (countdownRef.current !== null) clearInterval(countdownRef.current);
     };
   }, []);
 
@@ -76,6 +79,8 @@ export default function PaymentPage() {
 
       setQrcodeUrl(data.qrcodeUrl);
       setOrderNo(data.orderNo);
+      setTimeLeft(300);
+      startCountdown();
       startPolling(data.orderNo);
     } catch {
       setError("网络错误，请重试");
@@ -84,13 +89,31 @@ export default function PaymentPage() {
     }
   }
 
+  function startCountdown() {
+    if (countdownRef.current !== null) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownRef.current!);
+          countdownRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
+
+  function stopTimers() {
+    if (timerRef.current !== null) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (countdownRef.current !== null) { clearInterval(countdownRef.current); countdownRef.current = null; }
+  }
+
   function startPolling(no: string) {
     if (timerRef.current !== null) clearInterval(timerRef.current);
     const deadline = Date.now() + 5 * 60 * 1000; // 5 分钟
     timerRef.current = setInterval(async () => {
       if (Date.now() > deadline) {
-        clearInterval(timerRef.current!);
-        timerRef.current = null;
+        stopTimers();
         setPollExpired(true);
         return;
       }
@@ -100,14 +123,17 @@ export default function PaymentPage() {
         });
         const data = await res.json();
         if (data.status === "paid") {
-          clearInterval(timerRef.current!);
-          timerRef.current = null;
-          // 更新本地 user 缓存
-          const stored = localStorage.getItem("user");
-          if (stored) {
-            const u = JSON.parse(stored);
-            localStorage.setItem("user", JSON.stringify({ ...u, plan: data.plan, planExpireAt: data.expireAt }));
-          }
+          stopTimers();
+          // 从服务端拉取完整用户信息（含 isPaid / daysLeft）
+          try {
+            const meRes = await fetch("/api/auth/me", {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              localStorage.setItem("user", JSON.stringify(meData.user));
+            }
+          } catch {}
           router.push("/payment/success");
         }
       } catch {}
@@ -165,14 +191,22 @@ export default function PaymentPage() {
               <div className="space-y-3">
                 <p className="text-sm text-orange-500">订单已超时，请重新下单</p>
                 <button
-                  onClick={() => { setQrcodeUrl(null); setOrderNo(null); setPollExpired(false); }}
+                  onClick={() => { setQrcodeUrl(null); setOrderNo(null); setPollExpired(false); setTimeLeft(300); }}
                   className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   重新下单
                 </button>
               </div>
             ) : (
-              <p className="text-xs text-gray-400">等待支付中... 支付成功后自动跳转</p>
+              <div className="space-y-1">
+                <p className="text-xs text-gray-400">等待支付中，支付成功后自动跳转</p>
+                <p className="text-xs text-gray-400">
+                  剩余&nbsp;
+                  <span className={timeLeft <= 60 ? "font-semibold text-orange-500" : "text-gray-500"}>
+                    {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+                  </span>
+                </p>
+              </div>
             )}
           </div>
         ) : (
@@ -198,16 +232,19 @@ export default function PaymentPage() {
           <div className="mb-3 text-sm font-medium text-gray-700">会员权益</div>
           <ul className="space-y-2 text-sm text-gray-600">
             {[
-              "全部 GESP C++ 真题（含历年真卷）",
-              "AI 老师无限次对话辅导",
-              "错题本 + AI 错因分析",
-              "知识点掌握率仪表盘",
-              "智能推题（基于薄弱知识点）",
-              "周度学习报告自动生成",
-            ].map((item) => (
-              <li key={item} className="flex items-start gap-2">
-                <span className="mt-0.5 text-green-500">✓</span>
-                {item}
+              { text: "全部 GESP C++ 真题（含历年真卷）", done: true },
+              { text: "AI 老师无限次对话辅导", done: true },
+              { text: "错题本 + AI 错因分析", done: true },
+              { text: "知识点掌握率仪表盘", done: false },
+              { text: "智能推题（基于薄弱知识点）", done: false },
+              { text: "周度学习报告自动生成", done: false },
+            ].map(({ text, done }) => (
+              <li key={text} className="flex items-start gap-2">
+                <span className={`mt-0.5 ${done ? "text-green-500" : "text-gray-300"}`}>✓</span>
+                <span className={done ? "" : "text-gray-400"}>
+                  {text}
+                  {!done && <span className="ml-1.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">即将上线</span>}
+                </span>
               </li>
             ))}
           </ul>

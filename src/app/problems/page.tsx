@@ -10,6 +10,7 @@ interface Problem {
   title: string;
   level: number;
   tags: string; // JSON array
+  userStatus: "ac" | "attempted" | null;
 }
 
 const LEVEL_COLORS: Record<number, string> = {
@@ -87,9 +88,21 @@ function ProblemsContent() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       {showWelcome && (
-        <div className="bg-blue-600 text-white text-sm text-center py-2.5 px-4">
-          欢迎加入 GESP.AI！你可以免费体验 1 道题，选一道开始吧 💪
-          <button onClick={() => setShowWelcome(false)} className="ml-4 opacity-70 hover:opacity-100">✕</button>
+        <div className="border-b border-blue-200 bg-blue-50 px-4 py-4">
+          <div className="mx-auto max-w-6xl flex items-start justify-between gap-4">
+            <div>
+              <p className="font-semibold text-blue-900">欢迎来到 GESP.AI！</p>
+              <p className="mt-0.5 text-sm text-blue-700">
+                免费账号可以体验 <span className="font-semibold">1 道题</span>的全部功能——AI 老师对话（5 次）、提交判题。选一道你目标级别的题目开始吧。
+              </p>
+            </div>
+            <button
+              onClick={() => setShowWelcome(false)}
+              className="flex-shrink-0 text-blue-400 hover:text-blue-600"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
       <main className="mx-auto max-w-6xl px-4 py-8">
@@ -141,6 +154,7 @@ function ProblemsContent() {
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-sm text-gray-500">
+                  <th className="w-8 px-3 py-3"></th>
                   <th className="px-4 py-3 font-medium">编号</th>
                   <th className="px-4 py-3 font-medium">题目</th>
                   <th className="px-4 py-3 font-medium">知识点</th>
@@ -156,6 +170,14 @@ function ProblemsContent() {
                       onClick={() => router.push(`/problems/${p.id}`)}
                       className="cursor-pointer border-b last:border-b-0 hover:bg-blue-50 transition"
                     >
+                      <td className="px-3 py-3 text-center">
+                        {p.userStatus === "ac" && (
+                          <span title="已通过" className="text-green-500 text-base">✓</span>
+                        )}
+                        {p.userStatus === "attempted" && (
+                          <span title="尝试过" className="inline-block w-2 h-2 rounded-full bg-yellow-400" />
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-500 font-mono whitespace-nowrap">
                         {p.luoguId}
                       </td>
