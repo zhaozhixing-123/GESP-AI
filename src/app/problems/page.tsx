@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 
@@ -23,7 +23,7 @@ const LEVEL_COLORS: Record<number, string> = {
   8: "bg-red-100 text-red-700",
 };
 
-export default function ProblemsPage() {
+function ProblemsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -220,5 +220,19 @@ export default function ProblemsPage() {
         <p className="mt-4 text-center text-sm text-gray-400">共 {total} 道题</p>
       </main>
     </div>
+  );
+}
+
+export default function ProblemsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-gray-500">加载中...</p>
+        </div>
+      }
+    >
+      <ProblemsContent />
+    </Suspense>
   );
 }
