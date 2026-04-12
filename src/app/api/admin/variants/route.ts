@@ -51,13 +51,18 @@ async function handleSingle(problemId: number): Promise<Response> {
     return Response.json({ error: "题目不存在" }, { status: 404 });
   }
 
+  // 清理失败记录
+  await prisma.variantProblem.deleteMany({
+    where: { sourceId: problemId, genStatus: "failed" },
+  });
+
   // 已有多少 ready/generating 变形题
   const existing = await prisma.variantProblem.findMany({
     where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
     select: { id: true, genStatus: true },
   });
 
-  const readyCount     = existing.filter((v) => v.genStatus === "ready").length;
+  const readyCount      = existing.filter((v) => v.genStatus === "ready").length;
   const generatingCount = existing.filter((v) => v.genStatus === "generating").length;
   const needed = TARGET_VARIANTS_PER_PROBLEM - readyCount - generatingCount;
 
