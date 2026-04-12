@@ -47,7 +47,7 @@ function buildSourceContext(source: SourceProblem): string {
 ${sampleText ? `**样例**:\n${sampleText}` : ""}`;
 }
 
-/** 调用 Claude（tool_use 强制结构化）生成变形题题面 */
+/** 调用 Claude（tool_use 强制结构化）生成变形题题面（只提供样例输入，输出由解法计算） */
 async function callGenerateVariant(
   source: SourceProblem,
   model: string
@@ -60,12 +60,9 @@ ${buildSourceContext(source)}
 ## 变形题要求
 1. **保持相同的算法思路和知识点**，但改变题目的情境、故事背景、变量名称，以及部分数值参数
 2. 难度和 GESP 级别保持不变（${source.level} 级）
-3. 生成 2~3 组样例，每组样例必须手动推算正确的输出
+3. 提供 2~3 组样例输入（sampleInputs），**不需要提供输出**，输出由程序自动计算
 4. 输入输出格式可以调整，但整体复杂度相近
 5. 题目描述完整，不能引用原题，不能出现"原题"等字眼
-
-## 样例要求
-在生成样例之前，请先自行用纸笔推算每组样例的正确答案，确保 input → output 完全正确。
 
 请调用 submit_variant 工具提交你的变形题。`;
 
@@ -84,20 +81,13 @@ ${buildSourceContext(source)}
             description:  { type: "string", description: "题目描述（Markdown）" },
             inputFormat:  { type: "string", description: "输入格式说明" },
             outputFormat: { type: "string", description: "输出格式说明" },
-            samples: {
+            sampleInputs: {
               type: "array",
-              description: "2~3 组样例，每组 {input, output}",
-              items: {
-                type: "object",
-                properties: {
-                  input:  { type: "string" },
-                  output: { type: "string" },
-                },
-                required: ["input", "output"],
-              },
+              description: "2~3 组样例输入字符串（不需要输出，程序会自动计算）",
+              items: { type: "string" },
             },
           },
-          required: ["title", "description", "inputFormat", "outputFormat", "samples"],
+          required: ["title", "description", "inputFormat", "outputFormat", "sampleInputs"],
         },
       },
     ],
@@ -115,31 +105,38 @@ ${buildSourceContext(source)}
     description: string;
     inputFormat: string;
     outputFormat: string;
-    samples: Array<{ input: string; output: string }>;
+    sampleInputs: string[];
   };
 
   if (!raw.title || !raw.description || !raw.inputFormat || !raw.outputFormat) {
     throw new Error("变形题字段不完整");
   }
-  if (!Array.isArray(raw.samples) || raw.samples.length < 2) {
-    throw new Error(`样例数量不足（${raw.samples?.length ?? 0} 组，需要至少 2 组）`);
+  if (!Array.isArray(raw.sampleInputs) || raw.sampleInputs.length < 2) {
+    throw new Error(`样例输入数量不足（${raw.sampleInputs?.length ?? 0} 组，需要至少 2 组）`);
   }
 
   const tags: string[] = JSON.parse(source.tags || "[]");
+
+  // 先用空 output 占位，后续由 computeSampleOutputs 填充
+  const samples = raw.sampleInputs.map((input) => ({ input, output: "" }));
 
   return {
     title:        raw.title,
     description:  raw.description,
     inputFormat:  raw.inputFormat,
     outputFormat: raw.outputFormat,
-    samples:      JSON.stringify(raw.samples),
+    samples:      JSON.stringify(samples),
     tags:         JSON.stringify(tags),
     level:        source.level,
   };
 }
 
-/** 用 judge0 验证变形题样例是否自洽（AI 写一个解法跑一遍） */
-async function verifySamples(draft: VariantDraft, model: string): Promise<void> {
+/**
+ * AI 写 C++ 解法 → Judge0 跑每个样例输入 → 用运行结果填充样例输出。
+ * 返回更新后的 draft（samples 中 output 已填充）。
+ * 如果解法编译失败或任意样例运行出错则抛出异常。
+ */
+async function computeSampleOutputs(draft: VariantDraft, model: string): Promise<VariantDraft> {
   const samples: Array<{ input: string; output: string }> = JSON.parse(draft.samples);
 
   // 让 AI 根据题面写一个正确解法
@@ -179,28 +176,32 @@ async function verifySamples(draft: VariantDraft, model: string): Promise<void> 
   const { solution } = toolBlock.input as { solution: string };
   if (!solution || solution.length < 20) throw new Error("解法太短");
 
-  // 逐一验证样例
+  // 逐一运行，用输出填充样例
   for (let i = 0; i < samples.length; i++) {
-    console.log(`[VariantGen] 验证样例 ${i + 1}/${samples.length}...`);
+    console.log(`[VariantGen] 计算样例 ${i + 1}/${samples.length} 输出...`);
     const result = await judgeCode(solution, samples[i].input);
-    const actual   = normalizeOutput(result.stdout || "");
-    const expected = normalizeOutput(samples[i].output);
 
-    if (actual !== expected) {
-      throw new Error(
-        `样例 ${i + 1} 不一致：期望 "${expected.slice(0, 60)}"，实际 "${actual.slice(0, 60)}"`
-      );
+    if (result.status?.id !== 3) {
+      // status 3 = Accepted / 正常退出
+      const desc = result.status?.description ?? "Unknown";
+      throw new Error(`样例 ${i + 1} 运行失败（${desc}）：${result.stderr?.slice(0, 200) ?? ""}`);
     }
+
+    const output = normalizeOutput(result.stdout || "");
+    if (!output) throw new Error(`样例 ${i + 1} 输出为空`);
+
+    samples[i] = { input: samples[i].input, output };
 
     if (i < samples.length - 1) {
       await new Promise((r) => setTimeout(r, 1500));
     }
   }
 
-  console.log("[VariantGen] 所有样例验证通过");
+  console.log("[VariantGen] 所有样例输出计算完成");
+  return { ...draft, samples: JSON.stringify(samples) };
 }
 
-/** 主函数：生成一道变形题（含样例验证），失败时自动重试 */
+/** 主函数：生成一道变形题（样例输出由解法计算），失败时自动重试 */
 export async function generateVariantProblem(source: SourceProblem): Promise<VariantDraft> {
   let lastError = "";
 
@@ -208,8 +209,8 @@ export async function generateVariantProblem(source: SourceProblem): Promise<Var
     try {
       console.log(`[VariantGen] "${source.title}" 第 ${attempt} 次（Sonnet）...`);
       const draft = await callGenerateVariant(source, VARIANTGEN_MODEL);
-      await verifySamples(draft, VARIANTGEN_MODEL);
-      return draft;
+      const filled = await computeSampleOutputs(draft, VARIANTGEN_MODEL);
+      return filled;
     } catch (e: any) {
       lastError = e.message;
       console.error(`[VariantGen] Sonnet 第 ${attempt} 次失败: ${lastError}`);
@@ -223,9 +224,10 @@ export async function generateVariantProblem(source: SourceProblem): Promise<Var
   try {
     console.log(`[VariantGen] "${source.title}" Sonnet 全败，尝试 Opus...`);
     const draft = await callGenerateVariant(source, FALLBACK_MODEL);
-    await verifySamples(draft, FALLBACK_MODEL);
-    return draft;
+    const filled = await computeSampleOutputs(draft, FALLBACK_MODEL);
+    return filled;
   } catch (e: any) {
+    lastError = e.message;
     console.error(`[VariantGen] Opus 也失败: ${e.message}`);
   }
 
