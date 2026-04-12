@@ -141,7 +141,7 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          {user && (
+          {user ? (
             <>
               <div className="flex items-center gap-3 text-xs font-mono">
                 <span className="text-green-600">专注 {formatTime(focusSeconds)}</span>
@@ -166,6 +166,21 @@ export default function Navbar() {
               >
                 登出
               </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/register"
+                className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+              >
+                注册
+              </Link>
+              <Link
+                href="/"
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                登录
+              </Link>
             </>
           )}
         </div>
