@@ -75,7 +75,13 @@ async function handleSingle(problemId: number): Promise<Response> {
         } catch { /* 客户端已断开，静默忽略，生成继续 */ }
       }
 
+      // 每 20 秒发一条 SSE 注释，防止 Railway 代理因空闲超时断开连接
+      const keepalive = setInterval(() => {
+        try { controller.enqueue(encoder.encode(": keepalive\n\n")); } catch { /* ignore */ }
+      }, 20_000);
+
       if (needed <= 0) {
+        clearInterval(keepalive);
         send({ done: true, message: `已有 ${readyCount} 道 ready 变形题，无需生成` });
         controller.close();
         return;
@@ -154,6 +160,7 @@ async function handleSingle(problemId: number): Promise<Response> {
         }
       }
 
+      clearInterval(keepalive);
       send({ done: true, message: `全部完成，成功生成 ${successCount}/${needed} 道变形题` });
       controller.close();
     },
@@ -196,7 +203,13 @@ async function handleBatch(request: NextRequest): Promise<Response> {
         } catch { /* 客户端已断开，静默忽略，生成继续 */ }
       }
 
+      // keepalive：防止 Railway 代理因空闲超时断开连接
+      const keepalive = setInterval(() => {
+        try { controller.enqueue(encoder.encode(": keepalive\n\n")); } catch { /* ignore */ }
+      }, 20_000);
+
       if (needProblems.length === 0) {
+        clearInterval(keepalive);
         send({ done: true, message: "所有题目已有 4 道变形题，无需生成" });
         controller.close();
         return;
@@ -211,17 +224,17 @@ async function handleBatch(request: NextRequest): Promise<Response> {
         // 复用单题逻辑：直接调用 handleSingle 并消费其 stream
         const singleResponse = await handleSingle(p.id);
         const reader = singleResponse.body?.getReader();
-        const decoder = new TextDecoder();
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            // 透传每道题的进度事件
-            controller.enqueue(value);
+            // 透传每道题的进度事件（已包含单题的 keepalive）
+            try { controller.enqueue(value); } catch { /* ignore */ }
           }
         }
       }
 
+      clearInterval(keepalive);
       send({ done: true, message: `批量生成完毕，处理了 ${needProblems.length} 道题` });
       controller.close();
     },
