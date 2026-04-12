@@ -56,15 +56,20 @@ async function handleSingle(problemId: number): Promise<Response> {
     where: { sourceId: problemId, genStatus: "failed" },
   });
 
-  // 已有多少 ready/generating 变形题
+  // 已有多少 ready/generating 变形题（同时获取标题，用于去重提示）
   const existing = await prisma.variantProblem.findMany({
     where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
-    select: { id: true, genStatus: true },
+    select: { id: true, genStatus: true, title: true },
   });
 
   const readyCount      = existing.filter((v) => v.genStatus === "ready").length;
   const generatingCount = existing.filter((v) => v.genStatus === "generating").length;
   const needed = TARGET_VARIANTS_PER_PROBLEM - readyCount - generatingCount;
+
+  // 收集已有标题，生成新变形题时传入避免重复
+  const usedTitles: string[] = existing
+    .filter((v) => v.title && v.title !== "生成中...")
+    .map((v) => v.title);
 
   const encoder = new TextEncoder();
   const stream  = new ReadableStream({
@@ -106,7 +111,7 @@ async function handleSingle(problemId: number): Promise<Response> {
 
           send({ step: "variant_gen", current: i, total: needed, message: `第 ${i}/${needed} 道：生成题面...` });
 
-          const draft = await generateVariantProblem(problem);
+          const draft = await generateVariantProblem(problem, [...usedTitles]);
 
           send({ step: "testgen", current: i, total: needed, message: `第 ${i}/${needed} 道：生成测试用例...` });
 
@@ -142,6 +147,7 @@ async function handleSingle(problemId: number): Promise<Response> {
             },
           });
 
+          usedTitles.push(draft.title); // 本批次后续生成时回避该标题
           successCount++;
           send({
             step: "done_one", current: i, total: needed,

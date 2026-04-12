@@ -50,13 +50,18 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}`;
 /** 调用 Claude（tool_use 强制结构化）生成变形题题面（只提供样例输入，输出由解法计算） */
 async function callGenerateVariant(
   source: SourceProblem,
-  model: string
+  model: string,
+  existingTitles: string[]
 ): Promise<VariantDraft> {
+  const avoidSection = existingTitles.length > 0
+    ? `\n## 已有变形题（必须与这些完全不同）\n${existingTitles.map((t, i) => `${i + 1}. 《${t}》`).join("\n")}\n**要求**：情境、故事背景、数值参数必须与上述所有已有变形题明显不同，禁止重复使用相同的主题或场景。\n`
+    : "";
+
   const prompt = `你是一名 GESP 算法竞赛出题人，请根据下面的原题，设计一道"变形题"。
 
 ## 原题信息
 ${buildSourceContext(source)}
-
+${avoidSection}
 ## 变形题要求
 1. **保持相同的算法思路和知识点**，但改变题目的情境、故事背景、变量名称，以及部分数值参数
 2. 难度和 GESP 级别保持不变（${source.level} 级）
@@ -202,13 +207,16 @@ async function computeSampleOutputs(draft: VariantDraft, model: string): Promise
 }
 
 /** 主函数：生成一道变形题（样例输出由解法计算），失败时自动重试 */
-export async function generateVariantProblem(source: SourceProblem): Promise<VariantDraft> {
+export async function generateVariantProblem(
+  source: SourceProblem,
+  existingTitles: string[] = []
+): Promise<VariantDraft> {
   let lastError = "";
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       console.log(`[VariantGen] "${source.title}" 第 ${attempt} 次（Sonnet）...`);
-      const draft = await callGenerateVariant(source, VARIANTGEN_MODEL);
+      const draft = await callGenerateVariant(source, VARIANTGEN_MODEL, existingTitles);
       const filled = await computeSampleOutputs(draft, VARIANTGEN_MODEL);
       return filled;
     } catch (e: any) {
@@ -223,7 +231,7 @@ export async function generateVariantProblem(source: SourceProblem): Promise<Var
   // 全部 Sonnet 失败，用 Opus fallback 一次
   try {
     console.log(`[VariantGen] "${source.title}" Sonnet 全败，尝试 Opus...`);
-    const draft = await callGenerateVariant(source, FALLBACK_MODEL);
+    const draft = await callGenerateVariant(source, FALLBACK_MODEL, existingTitles);
     const filled = await computeSampleOutputs(draft, FALLBACK_MODEL);
     return filled;
   } catch (e: any) {
