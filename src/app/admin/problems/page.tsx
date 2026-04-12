@@ -302,6 +302,9 @@ export default function AdminProblemsPage() {
   const [batchVariantProgress, setBatchVariantProgress] = useState("");
   const [batchVariantResults, setBatchVariantResults]   = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
 
+  // --- 批量变形题级别筛选 ---
+  const [batchVariantLevel, setBatchVariantLevel] = useState<string>("all");
+
   // --- 变形题展开查看 ---
   const [expandedProblemId, setExpandedProblemId] = useState<number | null>(null);
   const [variantDetails, setVariantDetails]       = useState<Record<number, VariantDetail[]>>({});
@@ -380,12 +383,14 @@ export default function AdminProblemsPage() {
 
   async function handleBatchGenerateVariants() {
     if (batchVariantRunning || variantGenRunning !== null) return;
-    if (!confirm("批量为所有不足 4 道变形题的题目生成变形题？每道约需10分钟，请确保网络稳定。")) return;
+    const levelLabel = batchVariantLevel === "all" ? "所有级别" : `${batchVariantLevel} 级`;
+    if (!confirm(`批量为【${levelLabel}】不足 4 道变形题的题目生成变形题？每道约需10分钟，请确保网络稳定。`)) return;
     setBatchVariantRunning(true);
     setBatchVariantResults([]);
     setBatchVariantProgress("启动批量变形题生成...");
     try {
-      const res = await fetch("/api/admin/variants?batch=1", { method: "POST", headers });
+      const levelQuery = batchVariantLevel !== "all" ? `&level=${batchVariantLevel}` : "";
+      const res = await fetch(`/api/admin/variants?batch=1${levelQuery}`, { method: "POST", headers });
       if (!res.body) throw new Error("no stream");
       const reader  = res.body.getReader();
       const decoder = new TextDecoder();
@@ -803,6 +808,17 @@ export default function AdminProblemsPage() {
             <div className="mb-4 rounded-lg bg-white p-4 shadow">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-gray-700">批量生成变形题</span>
+                <select
+                  value={batchVariantLevel}
+                  onChange={(e) => setBatchVariantLevel(e.target.value)}
+                  disabled={batchVariantRunning}
+                  className="rounded-md border px-2 py-1 text-sm text-gray-700 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+                >
+                  <option value="all">全部级别</option>
+                  {[1,2,3,4,5,6,7,8].map((l) => (
+                    <option key={l} value={l}>{l} 级</option>
+                  ))}
+                </select>
                 <button
                   onClick={handleBatchGenerateVariants}
                   disabled={batchVariantRunning || variantGenRunning !== null}

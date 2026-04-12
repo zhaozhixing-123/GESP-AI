@@ -184,8 +184,13 @@ async function handleSingle(problemId: number): Promise<Response> {
 // ─── 批量生成 ─────────────────────────────────────────────────────────────────
 
 async function handleBatch(request: NextRequest): Promise<Response> {
-  // 找所有 ready 变形题不足 4 道的题目
+  const url = new URL(request.url);
+  const levelParam = url.searchParams.get("level");
+  const levelFilter = levelParam ? parseInt(levelParam) : null;
+
+  // 找所有 ready 变形题不足 4 道的题目（可按级别筛选）
   const allProblems = await prisma.problem.findMany({
+    where: levelFilter ? { level: levelFilter } : undefined,
     select: { id: true, title: true },
   });
 
