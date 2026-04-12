@@ -125,6 +125,9 @@ export default function Navbar() {
           <Link href="/wrongbook" className="text-sm text-gray-600 hover:text-gray-900">
             错题本
           </Link>
+          <Link href="/exam" className="text-sm text-gray-600 hover:text-gray-900">
+            模考
+          </Link>
           <Link href="/settings/parent" className="text-sm text-gray-600 hover:text-gray-900">
             家长设置
           </Link>

@@ -7,6 +7,7 @@ interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   height?: string;
+  onSelectionChange?: (selected: string) => void;
 }
 
 const DEFAULT_CODE = `#include <iostream>
@@ -19,8 +20,10 @@ int main() {
 
 export { DEFAULT_CODE };
 
-export default function CodeEditor({ value, onChange, height = "400px" }: CodeEditorProps) {
+export default function CodeEditor({ value, onChange, height = "400px", onSelectionChange }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
 
   const handleMount = useCallback((editor: any) => {
     editorRef.current = editor;
@@ -38,6 +41,18 @@ export default function CodeEditor({ value, onChange, height = "400px" }: CodeEd
         editor.updateOptions({ scrollbar: { handleMouseWheel: false } });
       });
     }
+
+    // 监听选中文本变化
+    editor.onDidChangeCursorSelection(() => {
+      if (!onSelectionChangeRef.current) return;
+      const selection = editor.getSelection();
+      if (!selection || selection.isEmpty()) {
+        onSelectionChangeRef.current("");
+      } else {
+        const selected = editor.getModel()?.getValueInRange(selection) || "";
+        onSelectionChangeRef.current(selected);
+      }
+    });
   }, []);
 
   return (

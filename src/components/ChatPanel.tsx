@@ -17,9 +17,11 @@ interface ChatPanelProps {
   code: string;
   initialMessage?: string;
   title?: string;  // 面板标题，默认 "AI 老师"
+  // 外部触发发送：nonce 变化时发送 text，可携带 code
+  triggerSend?: { text: string; code?: string; nonce: number };
 }
 
-export default function ChatPanel({ problemId, code, initialMessage, title }: ChatPanelProps) {
+export default function ChatPanel({ problemId, code, initialMessage, title, triggerSend }: ChatPanelProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -31,6 +33,7 @@ export default function ChatPanel({ problemId, code, initialMessage, title }: Ch
   const [limitType, setLimitType] = useState<"free_limit" | "chat_limit" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const initialSentRef = useRef(false);
+  const lastTriggerNonce = useRef(-1);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -59,7 +62,15 @@ export default function ChatPanel({ problemId, code, initialMessage, title }: Ch
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streaming]);
 
-  async function sendMessage(text: string) {
+  // 外部触发发送
+  useEffect(() => {
+    if (!triggerSend || triggerSend.nonce === lastTriggerNonce.current) return;
+    lastTriggerNonce.current = triggerSend.nonce;
+    sendMessage(triggerSend.text, triggerSend.code);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerSend?.nonce]);
+
+  async function sendMessage(text: string, overrideCode?: string) {
     if (!text.trim() || sending) return;
 
     setSending(true);
@@ -67,6 +78,7 @@ export default function ChatPanel({ problemId, code, initialMessage, title }: Ch
     setMessages((prev) => [...prev, { role: "user", content: text }]);
 
     try {
+      const codeToSend = overrideCode !== undefined ? overrideCode : (includeCode ? code : undefined);
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -76,7 +88,7 @@ export default function ChatPanel({ problemId, code, initialMessage, title }: Ch
         body: JSON.stringify({
           problemId,
           message: text,
-          code: includeCode ? code : undefined,
+          code: codeToSend,
         }),
       });
 

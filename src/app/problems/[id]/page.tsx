@@ -133,6 +133,10 @@ export default function ProblemDetailPage() {
   const [activeTab, setActiveTab] = useState<"run" | "judge">("run");
   const [showCustomInput, setShowCustomInput] = useState(false);
 
+  // 代码选中 & 外部触发聊天
+  const [selectedCode, setSelectedCode] = useState("");
+  const [chatTrigger, setChatTrigger] = useState<{ text: string; code?: string; nonce: number } | undefined>();
+
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
@@ -489,6 +493,20 @@ export default function ProblemDetailPage() {
           <div className="flex items-center justify-between border-b bg-white px-4 py-2">
             <span className="text-sm font-medium text-gray-700">C++ 代码</span>
             <div className="flex gap-2">
+              {selectedCode && (
+                <button
+                  onClick={() => {
+                    setChatTrigger({
+                      text: `请解释一下这段代码的含义：\n\`\`\`cpp\n${selectedCode}\n\`\`\``,
+                      nonce: Date.now(),
+                    });
+                    setBottomTab("chat");
+                  }}
+                  className="rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100"
+                >
+                  解释选中代码
+                </button>
+              )}
               <button
                 onClick={handleToggleWrongBook}
                 disabled={wrongBookLoading}
@@ -520,7 +538,7 @@ export default function ProblemDetailPage() {
 
           {/* 编辑器（自适应填满） */}
           <div className="flex-1 overflow-hidden">
-            <CodeEditor value={code} onChange={setCode} height="100%" />
+            <CodeEditor value={code} onChange={setCode} height="100%" onSelectionChange={setSelectedCode} />
           </div>
 
           {/* 底部区域：结果 / AI老师 / 自定义输入 */}
@@ -708,6 +726,30 @@ export default function ProblemDetailPage() {
                           )}
                         </div>
                       ))}
+                      {/* AC 时展示代码点评入口 */}
+                      {overallStatus === "AC" && (
+                        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-sm font-medium text-green-800">通过了！试试让 AI 帮你找更优解？</div>
+                              <div className="text-xs text-green-600 mt-0.5">分析时间复杂度、代码风格、有无更简洁的写法</div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setChatTrigger({
+                                  text: "我刚才 AC 了这道题，请帮我点评一下代码，有没有可以优化的地方？比如时间复杂度、代码风格、更简洁的写法等。",
+                                  code,
+                                  nonce: Date.now(),
+                                });
+                                setBottomTab("chat");
+                              }}
+                              className="ml-3 shrink-0 rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                            >
+                              AI 点评代码
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -739,7 +781,7 @@ export default function ProblemDetailPage() {
               )}
 
               {bottomTab === "chat" && (
-                <ChatPanel problemId={parseInt(id as string)} code={code} />
+                <ChatPanel problemId={parseInt(id as string)} code={code} triggerSend={chatTrigger} />
               )}
             </div>
           </div>
