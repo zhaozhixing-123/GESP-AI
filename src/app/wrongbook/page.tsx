@@ -55,8 +55,18 @@ export default function WrongBookPage() {
   const [analyzingIds, setAnalyzingIds] = useState<Set<number>>(new Set());
   // 已展开分析面板的 problemId 集合
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  // 当前用户是否付费
+  const [isPaid, setIsPaid] = useState(true); // 默认 true 避免闪烁
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  useEffect(() => {
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      const u = JSON.parse(stored);
+      setIsPaid(u.isPaid ?? true);
+    }
+  }, []);
 
   useEffect(() => {
     fetch("/api/wrongbook", {
@@ -140,6 +150,9 @@ export default function WrongBookPage() {
   const masteredCount = entries.filter((e) => e.mastered).length;
   const pendingCount = entries.length - masteredCount;
 
+  // 免费用户已用分析次数（含加载的历史记录和本次新增）
+  const freeLimitReached = !isPaid && Object.keys(analyses).length >= 1;
+
   // ── 操作 ──────────────────────────────────────────────────────
 
   async function handleRemove(problemId: number) {
@@ -170,7 +183,12 @@ export default function WrongBookPage() {
 
       if (!res.ok) {
         const data = await res.json();
-        setAnalyses((prev) => ({ ...prev, [problemId]: `**分析失败：** ${data.error}` }));
+        if (data.error === "analyze_limit") {
+          setIsPaid(false); // 刷新限制状态，让按钮置灰
+          setAnalyses((prev) => { const n = { ...prev }; delete n[problemId]; return n; });
+        } else {
+          setAnalyses((prev) => ({ ...prev, [problemId]: `**分析失败：** ${data.error}` }));
+        }
         return;
       }
 
@@ -467,6 +485,15 @@ export default function WrongBookPage() {
                             ? "收起分析"
                             : "查看分析"}
                         </button>
+                      ) : freeLimitReached ? (
+                        <button
+                          disabled
+                          title="订阅后解锁更多分析"
+                          className="rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-400 cursor-not-allowed"
+                          onClick={() => router.push("/payment")}
+                        >
+                          订阅后分析
+                        </button>
                       ) : (
                         <button
                           onClick={() => handleAnalyze(entry.problemId)}
@@ -491,12 +518,20 @@ export default function WrongBookPage() {
                         <span className="text-xs font-semibold text-purple-700 tracking-wide">
                           错题分析
                         </span>
-                        {!isAnalyzing && (
+                        {!isAnalyzing && !freeLimitReached && (
                           <button
                             onClick={() => handleAnalyze(entry.problemId)}
                             className="text-xs text-purple-500 hover:text-purple-700 hover:underline"
                           >
                             重新分析
+                          </button>
+                        )}
+                        {!isAnalyzing && freeLimitReached && (
+                          <button
+                            onClick={() => router.push("/payment")}
+                            className="text-xs text-blue-500 hover:text-blue-700 hover:underline"
+                          >
+                            订阅解锁
                           </button>
                         )}
                       </div>

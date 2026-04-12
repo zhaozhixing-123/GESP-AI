@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 
@@ -46,6 +46,13 @@ export default function PaymentPage() {
   const [pollExpired, setPollExpired] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) clearInterval(timerRef.current);
+    };
+  }, []);
 
   async function handlePay() {
     setCreating(true);
@@ -78,10 +85,12 @@ export default function PaymentPage() {
   }
 
   function startPolling(no: string) {
+    if (timerRef.current !== null) clearInterval(timerRef.current);
     const deadline = Date.now() + 5 * 60 * 1000; // 5 分钟
-    const timer = setInterval(async () => {
+    timerRef.current = setInterval(async () => {
       if (Date.now() > deadline) {
-        clearInterval(timer);
+        clearInterval(timerRef.current!);
+        timerRef.current = null;
         setPollExpired(true);
         return;
       }
@@ -91,7 +100,8 @@ export default function PaymentPage() {
         });
         const data = await res.json();
         if (data.status === "paid") {
-          clearInterval(timer);
+          clearInterval(timerRef.current!);
+          timerRef.current = null;
           // 更新本地 user 缓存
           const stored = localStorage.getItem("user");
           if (stored) {

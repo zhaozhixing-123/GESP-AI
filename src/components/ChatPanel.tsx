@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -19,12 +20,15 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ problemId, code, initialMessage, title }: ChatPanelProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [includeCode, setIncludeCode] = useState(false);
   const [streaming, setStreaming] = useState("");
   const [model, setModel] = useState("");
+  // "free_limit" | "chat_limit" | null
+  const [limitType, setLimitType] = useState<"free_limit" | "chat_limit" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const initialSentRef = useRef(false);
 
@@ -78,7 +82,13 @@ export default function ChatPanel({ problemId, code, initialMessage, title }: Ch
 
       if (!res.ok) {
         const data = await res.json();
-        setMessages((prev) => [...prev, { role: "assistant", content: `错误: ${data.error}` }]);
+        if (data.error === "free_limit" || data.error === "chat_limit") {
+          // 移除刚才加入的用户消息，改为展示限额提示
+          setMessages((prev) => prev.slice(0, -1));
+          setLimitType(data.error);
+        } else {
+          setMessages((prev) => [...prev, { role: "assistant", content: `错误: ${data.message ?? data.error}` }]);
+        }
         setSending(false);
         return;
       }
@@ -214,27 +224,46 @@ export default function ChatPanel({ problemId, code, initialMessage, title }: Ch
         <div ref={bottomRef} />
       </div>
 
-      {/* 输入框 */}
-      <div className="border-t p-3">
-        <div className="flex gap-2">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入你的问题...（Enter 发送，Shift+Enter 换行）"
-            className="flex-1 resize-none rounded-md border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            rows={2}
-            disabled={sending}
-          />
+      {/* 限额提示 */}
+      {limitType && (
+        <div className="border-t bg-amber-50 px-4 py-3">
+          <p className="mb-2 text-sm text-amber-800">
+            {limitType === "chat_limit"
+              ? "免费对话已用完（每题限 5 次），订阅后无限对话"
+              : "免费体验已用完（限 1 道题），订阅后解锁全部题目"}
+          </p>
           <button
-            onClick={handleSend}
-            disabled={sending || !input.trim()}
-            className="self-end rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            onClick={() => router.push("/payment")}
+            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           >
-            发送
+            立即订阅
           </button>
         </div>
-      </div>
+      )}
+
+      {/* 输入框 */}
+      {!limitType && (
+        <div className="border-t p-3">
+          <div className="flex gap-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入你的问题...（Enter 发送，Shift+Enter 换行）"
+              className="flex-1 resize-none rounded-md border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              rows={2}
+              disabled={sending}
+            />
+            <button
+              onClick={handleSend}
+              disabled={sending || !input.trim()}
+              className="self-end rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

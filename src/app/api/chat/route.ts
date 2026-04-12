@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { checkFreeLimit } from "@/lib/subscription";
+import { checkFreeLimit, getSubscriptionInfo } from "@/lib/subscription";
 import { chat } from "@/lib/aiteacher";
 
 /** POST /api/chat — 发送消息给 AI 老师（流式响应） */
@@ -24,6 +24,20 @@ export async function POST(request: NextRequest) {
         { error: "free_limit", message: "免费体验已用完，订阅后解锁全部题目" },
         { status: 403 }
       );
+    }
+
+    // 免费用户在该题对话限 5 次
+    const sub = await getSubscriptionInfo(user.userId);
+    if (!sub.isPaid) {
+      const chatCount = await prisma.chatHistory.count({
+        where: { userId: user.userId, problemId: parseInt(problemId), role: "user" },
+      });
+      if (chatCount >= 5) {
+        return Response.json(
+          { error: "chat_limit", message: "免费对话次数已用完，订阅后解锁无限对话" },
+          { status: 403 }
+        );
+      }
     }
 
     const stream = await chat({

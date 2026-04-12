@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { PLAN_AMOUNTS, createXunhuOrder } from "@/lib/xunhu";
@@ -20,7 +21,8 @@ export async function POST(request: NextRequest) {
   }
 
   const amount = PLAN_AMOUNTS[plan];
-  const orderNo = `GESP_${user.userId}_${Date.now()}`;
+  const random = crypto.randomBytes(4).toString("hex");
+  const orderNo = `GESP_${user.userId}_${Date.now()}_${random}`;
 
   try {
     // 先在数据库创建 pending 订单

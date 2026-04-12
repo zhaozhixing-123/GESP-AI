@@ -29,7 +29,7 @@ export async function getSubscriptionInfo(userId: number): Promise<SubscriptionI
 
   const daysLeft =
     isPaid && user.planExpireAt
-      ? Math.ceil((user.planExpireAt.getTime() - Date.now()) / 86_400_000)
+      ? Math.max(0, Math.ceil((user.planExpireAt.getTime() - Date.now()) / 86_400_000))
       : null;
 
   return {

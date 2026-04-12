@@ -1,7 +1,11 @@
 import jwt from "jsonwebtoken";
 import { NextRequest } from "next/server";
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret";
+const JWT_SECRET: string = (() => {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error("JWT_SECRET 环境变量未设置");
+  return s;
+})();
 
 export interface JwtPayload {
   userId: number;
