@@ -26,6 +26,8 @@ model User {
   chatHistory         ChatHistory[]
   wrongBookAnalyses   WrongBookAnalysis[]
   orders              Order[]
+  variantUnlocks      VariantUnlock[]
+  variantSubmissions  VariantSubmission[]
 }
 
 model Problem {
@@ -45,6 +47,8 @@ model Problem {
   wrongBooks          WrongBook[]
   chatHistory         ChatHistory[]
   wrongBookAnalyses   WrongBookAnalysis[]
+  variants            VariantProblem[]
+  variantUnlocks      VariantUnlock[]
 }
 
 model Submission {
@@ -65,38 +69,48 @@ model Submission {
 model WrongBook {
   id        Int      @id @default(autoincrement())
   userId    Int
-  problemId Int
+  problemId Int?                // null 时表示这是变形题错题
+  variantId Int?                // 变形题 ID（与 problemId 二选一）
   addedAt   DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  problem   Problem  @relation(fields: [problemId], references: [id])
+  user      User            @relation(fields: [userId], references: [id])
+  problem   Problem?        @relation(fields: [problemId], references: [id])
+  variant   VariantProblem? @relation(fields: [variantId], references: [id])
 
   @@unique([userId, problemId])
+  @@unique([userId, variantId])
 }
 
 model WrongBookAnalysis {
-  id           Int        @id @default(autoincrement())
-  userId       Int
-  problemId    Int
-  submissionId Int
-  content      String     // 完整 AI 响应（含【错误类型：xxx】首行）
-  errorType    String     // 提取的错误类型
-  createdAt    DateTime   @default(now())
-  user         User       @relation(fields: [userId], references: [id])
-  problem      Problem    @relation(fields: [problemId], references: [id])
-  submission   Submission @relation(fields: [submissionId], references: [id])
+  id                  Int        @id @default(autoincrement())
+  userId              Int
+  problemId           Int?                // null 时表示变形题分析
+  variantId           Int?                // 变形题 ID（与 problemId 二选一）
+  submissionId        Int?                // 真题提交 ID
+  variantSubmissionId Int?                // 变形题提交 ID
+  content             String             // 完整 AI 响应（含【错误类型：xxx】首行）
+  errorType           String             // 提取的错误类型
+  createdAt           DateTime   @default(now())
+  user                User               @relation(fields: [userId], references: [id])
+  problem             Problem?           @relation(fields: [problemId], references: [id])
+  variant             VariantProblem?    @relation(fields: [variantId], references: [id])
+  submission          Submission?        @relation(fields: [submissionId], references: [id])
+  variantSubmission   VariantSubmission? @relation(fields: [variantSubmissionId], references: [id])
 
   @@unique([userId, problemId])
+  @@unique([userId, variantId])
 }
 
 model ChatHistory {
   id        Int      @id @default(autoincrement())
   userId    Int
-  problemId Int
-  role      String   // user | assistant
+  problemId Int?                // null 时表示变形题对话
+  variantId Int?                // 变形题 ID（与 problemId 二选一）
+  role      String             // user | assistant
   content   String
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  problem   Problem  @relation(fields: [problemId], references: [id])
+  user      User            @relation(fields: [userId], references: [id])
+  problem   Problem?        @relation(fields: [problemId], references: [id])
+  variant   VariantProblem? @relation(fields: [variantId], references: [id])
 }
 
 model Order {
@@ -119,4 +133,61 @@ model Prompt {
   content   String
   variables String   @default("[]") // JSON: ["problem_title", "user_code", ...]
   updatedAt DateTime @updatedAt
+}
+
+// ───── 变形题系统 ─────
+
+model VariantProblem {
+  id            Int      @id @default(autoincrement())
+  sourceId      Int
+  title         String
+  description   String
+  inputFormat   String
+  outputFormat  String
+  samples       String               // JSON: [{input, output}]
+  testCases     String   @default("[]") // JSON: [{input, output}]，永不暴露给用户
+  tags          String   @default("[]")
+  level         Int
+  genStatus     String   @default("pending") // pending | generating | ready | failed
+  genError      String?
+  genModel      String?
+  verifiedAt    DateTime?
+  verifiedCount Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  source            Problem             @relation(fields: [sourceId], references: [id])
+  submissions       VariantSubmission[]
+  wrongBooks        WrongBook[]
+  wrongBookAnalyses WrongBookAnalysis[]
+  chatHistory       ChatHistory[]
+}
+
+// 解锁记录：真题 WA → batch=1；batch1 变形题 WA → batch=2
+model VariantUnlock {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  problemId  Int      // 源题 ID
+  batch      Int      // 1 或 2
+  unlockedAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  problem Problem @relation(fields: [problemId], references: [id])
+
+  @@unique([userId, problemId, batch])
+}
+
+model VariantSubmission {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  variantId  Int
+  code       String
+  language   String   @default("cpp")
+  status     String
+  timeUsed   Int?
+  memoryUsed Int?
+  createdAt  DateTime @default(now())
+
+  user              User               @relation(fields: [userId], references: [id])
+  variant           VariantProblem     @relation(fields: [variantId], references: [id])
+  wrongBookAnalyses WrongBookAnalysis[]
 }

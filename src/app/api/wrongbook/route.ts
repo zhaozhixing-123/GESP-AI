@@ -42,10 +42,9 @@ export async function GET(request: NextRequest) {
     const analysisMap = new Map(analyses.map((a) => [a.problemId, a]));
 
     const enriched = entries.map((entry) => {
-      const mastered = (acMap.get(entry.problemId) ?? []).some(
-        (t) => t >= entry.addedAt
-      );
-      const analysis = analysisMap.get(entry.problemId) ?? null;
+      const pid      = entry.problemId ?? -1;
+      const mastered = (acMap.get(pid) ?? []).some((t) => t >= entry.addedAt);
+      const analysis = analysisMap.get(pid) ?? null;
       return { ...entry, mastered, analysis };
     });
 

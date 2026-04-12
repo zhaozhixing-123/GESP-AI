@@ -103,24 +103,44 @@ function substituteVariables(
 }
 
 interface ChatContext {
-  problemId: number;
+  problemId?: number;
+  variantId?: number;
   userId: number;
   message: string;
   code?: string;
 }
 
+/** 从 Problem 或 VariantProblem 表获取题目基础信息 */
+async function getProblemInfo(
+  problemId?: number,
+  variantId?: number
+): Promise<{ title: string; description: string; inputFormat: string; outputFormat: string }> {
+  if (variantId) {
+    const v = await prisma.variantProblem.findUnique({
+      where: { id: variantId },
+      select: { title: true, description: true, inputFormat: true, outputFormat: true },
+    });
+    if (!v) throw new Error("变形题不存在");
+    return v;
+  }
+  if (problemId) {
+    const p = await prisma.problem.findUnique({
+      where: { id: problemId },
+      select: { title: true, description: true, inputFormat: true, outputFormat: true },
+    });
+    if (!p) throw new Error("题目不存在");
+    return p;
+  }
+  throw new Error("必须提供 problemId 或 variantId");
+}
+
 /** 构建完整的系统提示词 */
 async function buildSystemPrompt(
-  problemId: number,
+  problemId?: number,
+  variantId?: number,
   code?: string
 ): Promise<string> {
-  const problem = await prisma.problem.findUnique({
-    where: { id: problemId },
-    select: { title: true, description: true, inputFormat: true, outputFormat: true },
-  });
-
-  if (!problem) throw new Error("题目不存在");
-
+  const problem = await getProblemInfo(problemId, variantId);
   const template = await getSystemPrompt();
 
   const codeSection = code
@@ -154,39 +174,40 @@ const STATUS_HINTS: Record<string, string> = {
 
 /** 构建错题分析的系统提示词（使用 wrongbook_analysis 分类提示词） */
 async function buildWrongbookSystemPrompt(
-  problemId: number,
   code: string,
-  errorStatus: string
+  errorStatus: string,
+  problemId?: number,
+  variantId?: number
 ): Promise<string> {
-  const problem = await prisma.problem.findUnique({
-    where: { id: problemId },
-    select: { title: true, description: true, inputFormat: true, outputFormat: true },
-  });
-
-  if (!problem) throw new Error("题目不存在");
+  const problem = await getProblemInfo(problemId, variantId);
 
   const template = await getWrongbookAnalysisPrompt();
 
   return substituteVariables(template, {
-    problem_title: problem.title,
-    problem_description: problem.description.slice(0, 2000),
-    input_format: problem.inputFormat,
-    output_format: problem.outputFormat,
+    problem_title:          problem.title,
+    problem_description:    problem.description.slice(0, 2000),
+    input_format:           problem.inputFormat,
+    output_format:          problem.outputFormat,
     submission_status_label: STATUS_LABELS[errorStatus] || "未知状态",
-    status_specific_hint: STATUS_HINTS[errorStatus] || "",
-    wrong_code_section: `学生提交的代码（存在错误）：\n\`\`\`cpp\n${code}\n\`\`\``,
+    status_specific_hint:   STATUS_HINTS[errorStatus] || "",
+    wrong_code_section:     `学生提交的代码（存在错误）：\n\`\`\`cpp\n${code}\n\`\`\``,
   });
 }
 
 /** 加载聊天历史 */
 async function loadChatHistory(
   userId: number,
-  problemId: number
+  problemId?: number,
+  variantId?: number
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+  const where = variantId
+    ? { userId, variantId }
+    : { userId, problemId: problemId! };
+
   const history = await prisma.chatHistory.findMany({
-    where: { userId, problemId },
+    where,
     orderBy: { createdAt: "asc" },
-    take: 20, // 最近20条
+    take: 20,
   });
 
   return history.map((h) => ({
@@ -197,15 +218,16 @@ async function loadChatHistory(
 
 /** 发送消息并获取流式响应 */
 export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>> {
-  const systemPrompt = await buildSystemPrompt(ctx.problemId, ctx.code);
-  const history = await loadChatHistory(ctx.userId, ctx.problemId);
+  const systemPrompt = await buildSystemPrompt(ctx.problemId, ctx.variantId, ctx.code);
+  const history = await loadChatHistory(ctx.userId, ctx.problemId, ctx.variantId);
 
   // 保存用户消息
   await prisma.chatHistory.create({
     data: {
-      userId: ctx.userId,
-      problemId: ctx.problemId,
-      role: "user",
+      userId:    ctx.userId,
+      problemId: ctx.variantId ? null : ctx.problemId,
+      variantId: ctx.variantId ?? null,
+      role:    "user",
       content: ctx.message,
     },
   });
@@ -243,9 +265,10 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
         // 流结束，保存助手回复
         await prisma.chatHistory.create({
           data: {
-            userId: ctx.userId,
-            problemId: ctx.problemId,
-            role: "assistant",
+            userId:    ctx.userId,
+            problemId: ctx.variantId ? null : ctx.problemId,
+            variantId: ctx.variantId ?? null,
+            role:    "assistant",
             content: fullResponse,
           },
         });
@@ -271,22 +294,40 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
 export async function streamWrongCodeAnalysis({
   userId,
   problemId,
+  variantId,
 }: {
   userId: number;
-  problemId: number;
+  problemId?: number;
+  variantId?: number;
 }): Promise<ReadableStream<Uint8Array>> {
-  const latest = await prisma.submission.findFirst({
-    where: { userId, problemId, status: { not: "AC" } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, code: true, status: true },
-  });
+  let submissionId: number | null = null;
+  let variantSubmissionId: number | null = null;
+  let code: string;
+  let status: string;
 
-  if (!latest?.code) {
-    throw new Error("未找到该题的错误提交记录，请先提交一次代码");
+  if (variantId) {
+    const latest = await prisma.variantSubmission.findFirst({
+      where: { userId, variantId, status: { not: "AC" } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, code: true, status: true },
+    });
+    if (!latest?.code) throw new Error("未找到该变形题的错误提交记录，请先提交一次代码");
+    variantSubmissionId = latest.id;
+    code   = latest.code;
+    status = latest.status;
+  } else {
+    const latest = await prisma.submission.findFirst({
+      where: { userId, problemId: problemId!, status: { not: "AC" } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, code: true, status: true },
+    });
+    if (!latest?.code) throw new Error("未找到该题的错误提交记录，请先提交一次代码");
+    submissionId = latest.id;
+    code   = latest.code;
+    status = latest.status;
   }
 
-  const submissionId = latest.id;
-  const systemPrompt = await buildWrongbookSystemPrompt(problemId, latest.code, latest.status);
+  const systemPrompt = await buildWrongbookSystemPrompt(code, status, problemId, variantId);
 
   console.log(`[WrongbookAnalysis] 调用模型: ${AI_TEACHER_MODEL}`);
   const stream = await client.messages.stream({
@@ -313,11 +354,19 @@ export async function streamWrongCodeAnalysis({
         const match = fullText.match(/【错误类型：(.+?)】/);
         const errorType = match ? match[1].trim() : "其他";
         try {
-          await prisma.wrongBookAnalysis.upsert({
-            where: { userId_problemId: { userId, problemId } },
-            create: { userId, problemId, submissionId, content: fullText, errorType },
-            update: { submissionId, content: fullText, errorType },
-          });
+          if (variantId) {
+            await prisma.wrongBookAnalysis.upsert({
+              where: { userId_variantId: { userId, variantId } },
+              create: { userId, variantId, variantSubmissionId, content: fullText, errorType },
+              update: { variantSubmissionId, content: fullText, errorType },
+            });
+          } else {
+            await prisma.wrongBookAnalysis.upsert({
+              where: { userId_problemId: { userId, problemId: problemId! } },
+              create: { userId, problemId: problemId!, submissionId, content: fullText, errorType },
+              update: { submissionId, content: fullText, errorType },
+            });
+          }
         } catch (dbErr) {
           console.error("[WrongbookAnalysis] 保存分析失败:", dbErr);
         }

@@ -130,6 +130,20 @@ export async function POST(request: NextRequest) {
         update: {},
         create: { userId: user.userId, problemId: parseInt(problemId) },
       });
+
+      // 付费用户：解锁该题 batch1 变形题（幂等，重复触发无副作用）
+      const hasVariants = await prisma.variantProblem.count({
+        where: { sourceId: parseInt(problemId), genStatus: "ready" },
+      });
+      if (hasVariants > 0) {
+        await prisma.variantUnlock.upsert({
+          where: {
+            userId_problemId_batch: { userId: user.userId, problemId: parseInt(problemId), batch: 1 },
+          },
+          update: {},
+          create: { userId: user.userId, problemId: parseInt(problemId), batch: 1 },
+        });
+      }
     }
 
     return Response.json({ submission, results });

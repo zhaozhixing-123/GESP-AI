@@ -128,7 +128,10 @@ export default function AdminProblemsPage() {
 
   async function fetchProblems() {
     setLoading(true);
-    const res = await fetch("/api/admin/problems", { headers });
+    const [res] = await Promise.all([
+      fetch("/api/admin/problems", { headers }),
+      fetchVariantSummary(),
+    ]);
     if (res.ok) {
       const data = await res.json();
       setProblems(data.problems);
@@ -280,6 +283,88 @@ export default function AdminProblemsPage() {
     const data = await res.json();
     if (res.ok) { alert(data.message); fetchProblems(); }
     else { alert(data.error || "清空失败"); }
+  }
+
+  // --- 变形题生成 ---
+  const [variantSummary, setVariantSummary] = useState<Record<number, Record<string, number>>>({});
+  const [variantGenRunning, setVariantGenRunning] = useState<number | null>(null);
+  const [variantGenMsg, setVariantGenMsg] = useState("");
+  const [batchVariantRunning, setBatchVariantRunning] = useState(false);
+  const [batchVariantProgress, setBatchVariantProgress] = useState("");
+  const [batchVariantResults, setBatchVariantResults] = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
+
+  async function fetchVariantSummary() {
+    const res = await fetch("/api/admin/variants", { headers });
+    if (res.ok) {
+      const data = await res.json();
+      setVariantSummary(data.summary ?? {});
+    }
+  }
+
+  async function handleGenerateVariants(id: number) {
+    if (variantGenRunning !== null || batchVariantRunning) return;
+    setVariantGenRunning(id);
+    setVariantGenMsg("正在生成变形题...");
+    try {
+      const res = await fetch("/api/admin/variants", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ problemId: id }),
+      });
+      if (!res.body) throw new Error("no stream");
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            setVariantGenMsg(data.message ?? "");
+            if (data.done) { fetchVariantSummary(); }
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      setVariantGenMsg("网络错误: " + e.message);
+    }
+    setVariantGenRunning(null);
+    setTimeout(() => setVariantGenMsg(""), 10000);
+  }
+
+  async function handleBatchGenerateVariants() {
+    if (batchVariantRunning || variantGenRunning !== null) return;
+    if (!confirm("批量为所有不足 4 道变形题的题目生成变形题？每道约需10分钟，请确保网络稳定。")) return;
+    setBatchVariantRunning(true);
+    setBatchVariantResults([]);
+    setBatchVariantProgress("启动批量变形题生成...");
+    try {
+      const res = await fetch("/api/admin/variants?batch=1", { method: "POST", headers });
+      if (!res.body) throw new Error("no stream");
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            setBatchVariantProgress(data.message ?? "");
+            if (data.step === "done_one") {
+              setBatchVariantResults((prev) => [...prev, { title: `变形题 #${data.variantId}`, ok: true, msg: data.message }]);
+            } else if (data.step === "error_one") {
+              setBatchVariantResults((prev) => [...prev, { title: "生成失败", ok: false, msg: data.message }]);
+            }
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      setBatchVariantProgress("网络错误: " + (e as any).message);
+    }
+    setBatchVariantRunning(false);
+    fetchVariantSummary();
   }
 
   // --- 复核测试数据 ---
@@ -669,6 +754,38 @@ export default function AdminProblemsPage() {
               )}
             </div>
 
+            {/* 批量生成变形题 */}
+            <div className="mb-4 rounded-lg bg-white p-4 shadow">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">批量生成变形题</span>
+                <button
+                  onClick={handleBatchGenerateVariants}
+                  disabled={batchVariantRunning || variantGenRunning !== null}
+                  className="rounded-md bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {batchVariantRunning ? "生成中..." : "批量生成变形题"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">为所有不足 4 道变形题的题目补充生成，每道约需 10 分钟</p>
+
+              {batchVariantProgress && (
+                <div className={`mt-3 text-sm ${batchVariantRunning ? "text-yellow-700" : "text-amber-700"}`}>
+                  {batchVariantProgress}
+                </div>
+              )}
+
+              {batchVariantResults.length > 0 && (
+                <div className="mt-3 max-h-40 space-y-1 overflow-auto">
+                  {batchVariantResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate text-gray-700">{r.title}</span>
+                      <span className={r.ok ? "text-amber-600" : "text-red-600"}>{r.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {showForm && (
               <div className="mb-6 rounded-lg bg-white p-6 shadow">
                 <h2 className="mb-4 text-lg font-semibold">{editing ? "编辑题目" : "手动添加题目"}</h2>
@@ -746,6 +863,12 @@ export default function AdminProblemsPage() {
               </div>
             )}
 
+            {variantGenMsg && (
+              <div className={`mb-4 rounded-lg p-3 text-sm ${variantGenMsg.includes("失败") || variantGenMsg.includes("错误") ? "bg-red-50 text-red-600" : variantGenRunning ? "bg-yellow-50 text-yellow-700" : "bg-amber-50 text-amber-700"}`}>
+                {variantGenMsg}
+              </div>
+            )}
+
             {loading ? (
               <div className="py-12 text-center text-gray-500">加载中...</div>
             ) : problems.length === 0 ? (
@@ -760,6 +883,7 @@ export default function AdminProblemsPage() {
                       <th className="px-4 py-3 font-medium">级别</th>
                       <th className="px-4 py-3 font-medium">测试点</th>
                       <th className="px-4 py-3 font-medium">复核状态</th>
+                      <th className="px-4 py-3 font-medium">变形题</th>
                       <th className="px-4 py-3 font-medium">操作</th>
                     </tr>
                   </thead>
@@ -791,6 +915,24 @@ export default function AdminProblemsPage() {
                           })()}
                         </td>
                         <td className="px-4 py-3 text-sm">
+                          {(() => {
+                            const s = variantSummary[p.id] ?? {};
+                            const ready      = s["ready"]      ?? 0;
+                            const generating_v = s["generating"] ?? 0;
+                            const failed     = s["failed"]     ?? 0;
+                            if (ready === 0 && generating_v === 0 && failed === 0) {
+                              return <span className="text-gray-300">-</span>;
+                            }
+                            return (
+                              <span className={ready >= 4 ? "text-green-600" : "text-amber-600"}>
+                                {ready}/4
+                                {generating_v > 0 && <span className="ml-1 text-yellow-600">({generating_v}生成中)</span>}
+                                {failed > 0 && <span className="ml-1 text-red-500">({failed}失败)</span>}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
                           <button
                             onClick={() => handleGenerate(p.id)}
                             disabled={generating !== null || batchGenRunning || batchVerifyRunning}
@@ -804,6 +946,14 @@ export default function AdminProblemsPage() {
                             className="mr-2 text-purple-600 hover:underline disabled:opacity-50"
                           >
                             {verifying === p.id ? "复核中..." : "复核"}
+                          </button>
+                          <button
+                            onClick={() => handleGenerateVariants(p.id)}
+                            disabled={variantGenRunning !== null || batchVariantRunning}
+                            title="生成变形题"
+                            className={`mr-2 hover:underline disabled:opacity-50 ${(variantSummary[p.id]?.["ready"] ?? 0) >= 4 ? "text-gray-400" : "text-amber-600"}`}
+                          >
+                            {variantGenRunning === p.id ? "变形中..." : "变形题"}
                           </button>
                           <button onClick={() => openEdit(p.id)} className="mr-2 text-blue-600 hover:underline">编辑</button>
                           <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">删除</button>

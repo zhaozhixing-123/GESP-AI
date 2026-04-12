@@ -12,37 +12,44 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { problemId, message, code } = await request.json();
+    const { problemId, variantId, message, code } = await request.json();
 
-    if (!problemId || !message?.trim()) {
-      return Response.json({ error: "题目ID和消息不能为空" }, { status: 400 });
+    if (!message?.trim()) {
+      return Response.json({ error: "消息不能为空" }, { status: 400 });
+    }
+    if (!problemId && !variantId) {
+      return Response.json({ error: "需要提供 problemId 或 variantId" }, { status: 400 });
     }
 
-    const allowed = await checkFreeLimit(user.userId, parseInt(problemId));
-    if (!allowed) {
-      return Response.json(
-        { error: "free_limit", message: "免费体验已用完，订阅后解锁全部题目" },
-        { status: 403 }
-      );
-    }
-
-    // 免费用户在该题对话限 5 次
-    const sub = await getSubscriptionInfo(user.userId);
-    if (!sub.isPaid) {
-      const chatCount = await prisma.chatHistory.count({
-        where: { userId: user.userId, problemId: parseInt(problemId), role: "user" },
-      });
-      if (chatCount >= 5) {
+    // 变形题对话跳过付费墙（入口已受 VariantUnlock 保护），真题走正常流程
+    if (!variantId) {
+      const allowed = await checkFreeLimit(user.userId, parseInt(problemId));
+      if (!allowed) {
         return Response.json(
-          { error: "chat_limit", message: "免费对话次数已用完，订阅后解锁无限对话" },
+          { error: "free_limit", message: "免费体验已用完，订阅后解锁全部题目" },
           { status: 403 }
         );
+      }
+
+      // 免费用户在该题对话限 5 次
+      const sub = await getSubscriptionInfo(user.userId);
+      if (!sub.isPaid) {
+        const chatCount = await prisma.chatHistory.count({
+          where: { userId: user.userId, problemId: parseInt(problemId), role: "user" },
+        });
+        if (chatCount >= 5) {
+          return Response.json(
+            { error: "chat_limit", message: "免费对话次数已用完，订阅后解锁无限对话" },
+            { status: 403 }
+          );
+        }
       }
     }
 
     const stream = await chat({
-      problemId: parseInt(problemId),
-      userId: user.userId,
+      problemId: variantId ? undefined : parseInt(problemId),
+      variantId: variantId ? parseInt(variantId) : undefined,
+      userId:  user.userId,
       message: message.trim(),
       code,
     });
@@ -60,7 +67,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** GET /api/chat?problemId=X — 获取聊天历史 */
+/** GET /api/chat?problemId=X 或 ?variantId=X — 获取聊天历史 */
 export async function GET(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) {
@@ -68,15 +75,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const url = new URL(request.url);
+    const url       = new URL(request.url);
     const problemId = url.searchParams.get("problemId");
+    const variantId = url.searchParams.get("variantId");
 
-    if (!problemId) {
-      return Response.json({ error: "缺少 problemId" }, { status: 400 });
+    if (!problemId && !variantId) {
+      return Response.json({ error: "缺少 problemId 或 variantId" }, { status: 400 });
     }
 
+    const where = variantId
+      ? { userId: user.userId, variantId: parseInt(variantId) }
+      : { userId: user.userId, problemId: parseInt(problemId!) };
+
     const messages = await prisma.chatHistory.findMany({
-      where: { userId: user.userId, problemId: parseInt(problemId) },
+      where,
       orderBy: { createdAt: "asc" },
       select: { role: true, content: true, createdAt: true },
     });

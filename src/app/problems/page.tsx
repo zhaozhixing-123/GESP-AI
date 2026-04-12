@@ -11,6 +11,8 @@ interface Problem {
   level: number;
   tags: string; // JSON array
   userStatus: "ac" | "attempted" | null;
+  isVariant?: boolean;
+  sourceId?: number;  // 仅变形题有
 }
 
 const LEVEL_COLORS: Record<number, string> = {
@@ -166,9 +168,13 @@ function ProblemsContent() {
                   const tags: string[] = JSON.parse(p.tags || "[]");
                   return (
                     <tr
-                      key={p.id}
-                      onClick={() => router.push(`/problems/${p.id}`)}
-                      className="cursor-pointer border-b last:border-b-0 hover:bg-blue-50 transition"
+                      key={`${p.isVariant ? "v" : ""}${p.id}`}
+                      onClick={() => router.push(`/problems/${p.isVariant ? `v${p.id}` : p.id}`)}
+                      className={`cursor-pointer border-b last:border-b-0 transition ${
+                        p.isVariant
+                          ? "bg-amber-50/60 hover:bg-amber-100/80"
+                          : "hover:bg-blue-50"
+                      }`}
                     >
                       <td className="px-3 py-3 text-center">
                         {p.userStatus === "ac" && (
@@ -178,11 +184,22 @@ function ProblemsContent() {
                           <span title="尝试过" className="inline-block w-2 h-2 rounded-full bg-yellow-400" />
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 font-mono whitespace-nowrap">
-                        {p.luoguId}
+                      <td className="px-4 py-3 text-sm font-mono whitespace-nowrap">
+                        {p.isVariant ? (
+                          <span className="text-amber-600">↳ {p.luoguId}</span>
+                        ) : (
+                          <span className="text-gray-500">{p.luoguId}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        {p.title}
+                        <div className="flex items-center gap-2">
+                          {p.isVariant && (
+                            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 shrink-0">
+                              变形题
+                            </span>
+                          )}
+                          {p.title}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">

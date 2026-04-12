@@ -21,6 +21,8 @@ interface Problem {
   inputFormat: string;
   outputFormat: string;
   samples: string;
+  isVariant?: boolean;
+  sourceLuoguId?: string; // 变形题：来源题编号
 }
 
 interface Sample { input: string; output: string; }
@@ -140,6 +142,10 @@ export default function ProblemDetailPage() {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
+  // id 以 "v" 开头表示变形题
+  const isVariantPage = typeof id === "string" && id.startsWith("v");
+  const numericId     = isVariantPage ? parseInt((id as string).slice(1)) : parseInt(id as string);
+
   useEffect(() => {
     async function fetchProblem() {
       const res = await fetch(`/api/problems/${id}`, {
@@ -159,9 +165,10 @@ export default function ProblemDetailPage() {
       if (res.ok) {
         const data = await res.json();
         setProblem(data);
-        // 默认填充第一个样例输入
         const samples = JSON.parse(data.samples || "[]");
         if (samples.length > 0) setRunInput(samples[0].input);
+      } else {
+        setLoading(false);
       }
       setLoading(false);
     }
@@ -170,9 +177,10 @@ export default function ProblemDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`/api/submissions?problemId=${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const historyUrl = isVariantPage
+      ? `/api/variants/${numericId}/submissions`
+      : `/api/submissions?problemId=${numericId}`;
+    fetch(historyUrl, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => setSubmissions(data.submissions || []))
       .catch(() => {});
@@ -180,9 +188,10 @@ export default function ProblemDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`/api/wrongbook/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const wbUrl = isVariantPage
+      ? `/api/variants/${numericId}/wrongbook`
+      : `/api/wrongbook/${numericId}`;
+    fetch(wbUrl, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((data) => setInWrongBook(data.inWrongBook ?? false))
       .catch(() => {});
@@ -193,17 +202,19 @@ export default function ProblemDetailPage() {
     setWrongBookLoading(true);
     try {
       if (inWrongBook) {
-        await fetch(`/api/wrongbook/${id}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const url = isVariantPage ? `/api/variants/${numericId}/wrongbook` : `/api/wrongbook/${numericId}`;
+        await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
         setInWrongBook(false);
       } else {
-        await fetch("/api/wrongbook", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ problemId: parseInt(id as string) }),
-        });
+        if (isVariantPage) {
+          await fetch(`/api/variants/${numericId}/wrongbook`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+        } else {
+          await fetch("/api/wrongbook", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ problemId: numericId }),
+          });
+        }
         setInWrongBook(true);
       }
     } catch {}
@@ -227,7 +238,7 @@ export default function ProblemDetailPage() {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ code, problemId: parseInt(id as string) }),
+        body: JSON.stringify({ code, problemId: isVariantPage ? undefined : numericId, variantId: isVariantPage ? numericId : undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -252,7 +263,7 @@ export default function ProblemDetailPage() {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ code, stdin: runInput, problemId: parseInt(id as string) }),
+        body: JSON.stringify({ code, stdin: runInput, problemId: isVariantPage ? undefined : numericId, variantId: isVariantPage ? numericId : undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -275,11 +286,14 @@ export default function ProblemDetailPage() {
     setActiveTab("judge");
 
     try {
-      const res = await fetch("/api/submissions", {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ problemId: parseInt(id as string), code }),
-      });
+      const submitUrl = isVariantPage
+        ? `/api/variants/${numericId}/submit`
+        : "/api/submissions";
+      const submitBody = isVariantPage
+        ? { code }
+        : { problemId: numericId, code };
+
+      const res  = await fetch(submitUrl, { method: "POST", headers: authHeaders, body: JSON.stringify(submitBody) });
       const data = await res.json();
 
       if (!res.ok) {
@@ -287,9 +301,10 @@ export default function ProblemDetailPage() {
       } else {
         setJudgeResults(data.results);
         setOverallStatus(data.submission.status);
-        const historyRes = await fetch(`/api/submissions?problemId=${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const historyUrl = isVariantPage
+          ? `/api/variants/${numericId}/submissions`
+          : `/api/submissions?problemId=${numericId}`;
+        const historyRes  = await fetch(historyUrl, { headers: { Authorization: `Bearer ${token}` } });
         const historyData = await historyRes.json();
         setSubmissions(historyData.submissions || []);
       }
@@ -410,6 +425,11 @@ export default function ProblemDetailPage() {
             </button>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-gray-900">{problem.title}</h1>
+              {problem.isVariant && (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                  变形题
+                </span>
+              )}
               <span
                 className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   LEVEL_COLORS[problem.level] || "bg-gray-100 text-gray-600"
@@ -417,7 +437,11 @@ export default function ProblemDetailPage() {
               >
                 {problem.level}级
               </span>
-              <span className="text-sm text-gray-400 font-mono">{problem.luoguId}</span>
+              {problem.isVariant ? (
+                <span className="text-sm text-gray-400 font-mono">源题：{problem.sourceLuoguId}</span>
+              ) : (
+                <span className="text-sm text-gray-400 font-mono">{problem.luoguId}</span>
+              )}
               {JSON.parse(problem.tags || "[]").map((tag: string) => (
                 <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700">
                   {tag}
@@ -781,7 +805,12 @@ export default function ProblemDetailPage() {
               )}
 
               {bottomTab === "chat" && (
-                <ChatPanel problemId={parseInt(id as string)} code={code} triggerSend={chatTrigger} />
+                <ChatPanel
+                  problemId={isVariantPage ? undefined : numericId}
+                  variantId={isVariantPage ? numericId : undefined}
+                  code={code}
+                  triggerSend={chatTrigger}
+                />
               )}
             </div>
           </div>

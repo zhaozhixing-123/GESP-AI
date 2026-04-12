@@ -13,7 +13,8 @@ interface Message {
 }
 
 interface ChatPanelProps {
-  problemId: number;
+  problemId?: number;
+  variantId?: number;
   code: string;
   initialMessage?: string;
   title?: string;  // 面板标题，默认 "AI 老师"
@@ -21,7 +22,7 @@ interface ChatPanelProps {
   triggerSend?: { text: string; code?: string; nonce: number };
 }
 
-export default function ChatPanel({ problemId, code, initialMessage, title, triggerSend }: ChatPanelProps) {
+export default function ChatPanel({ problemId, variantId, code, initialMessage, title, triggerSend }: ChatPanelProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -40,7 +41,8 @@ export default function ChatPanel({ problemId, code, initialMessage, title, trig
   // 加载聊天历史
   useEffect(() => {
     async function loadHistory() {
-      const res = await fetch(`/api/chat?problemId=${problemId}`, {
+      const historyQuery = variantId ? `variantId=${variantId}` : `problemId=${problemId}`;
+      const res = await fetch(`/api/chat?${historyQuery}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -86,7 +88,8 @@ export default function ChatPanel({ problemId, code, initialMessage, title, trig
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          problemId,
+          problemId: variantId ? undefined : problemId,
+          variantId: variantId ?? undefined,
           message: text,
           code: codeToSend,
         }),
