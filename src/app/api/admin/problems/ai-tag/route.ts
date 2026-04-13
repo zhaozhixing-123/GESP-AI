@@ -58,6 +58,17 @@ export async function POST(request: NextRequest) {
         return;
       }
 
+      // system prompt 提到循环外，200+ 次调用共享 Anthropic prompt cache
+      const systemBlocks = [
+        {
+          type: "text" as const,
+          text: `你是一个 GESP C++ 算法题分类助手。从以下标签中为题目选出最匹配的 1-3 个，优先选最核心的考察点。
+只输出一个 JSON 字符串数组，不要任何解释、标点或其他内容，例如：["动态规划"] 或 ["DFS","树"]。
+可用标签：${GESP_TAGS.join("、")}`,
+          cache_control: { type: "ephemeral" as const },
+        },
+      ];
+
       let success = 0;
       let failed = 0;
 
@@ -67,9 +78,7 @@ export async function POST(request: NextRequest) {
           const msg = await client.messages.create({
             model: "claude-opus-4-6",
             max_tokens: 64,
-            system: `你是一个 GESP C++ 算法题分类助手。从以下标签中为题目选出最匹配的 1-3 个，优先选最核心的考察点。
-只输出一个 JSON 字符串数组，不要任何解释、标点或其他内容，例如：["动态规划"] 或 ["DFS","树"]。
-可用标签：${GESP_TAGS.join("、")}`,
+            system: systemBlocks,
             messages: [{
               role: "user",
               content: `题目：${title}\n描述：${description.slice(0, 300)}`,

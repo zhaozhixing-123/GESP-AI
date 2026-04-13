@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { promptCache } from "@/lib/prompt-cache";
 
 export async function PUT(
   request: NextRequest,
@@ -22,6 +23,7 @@ export async function PUT(
         ...(variables !== undefined && { variables }),
       },
     });
+    promptCache.invalidateAll();
     return Response.json(prompt);
   } catch (e: any) {
     if (e?.code === "P2025") return Response.json({ error: "不存在" }, { status: 404 });
@@ -39,6 +41,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     await prisma.prompt.delete({ where: { id: parseInt(id) } });
+    promptCache.invalidateAll();
     return Response.json({ success: true });
   } catch (e: any) {
     if (e?.code === "P2025") return Response.json({ error: "不存在" }, { status: 404 });

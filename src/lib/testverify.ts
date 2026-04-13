@@ -70,6 +70,7 @@ ${sampleText ? `**样例**:\n${sampleText}` : ""}
         },
         required: ["solution"],
       },
+      cache_control: { type: "ephemeral" as const },
     }],
     tool_choice: { type: "tool" as const, name: "submit_solution" },
     messages: [{ role: "user", content: prompt }],

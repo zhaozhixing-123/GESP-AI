@@ -46,7 +46,7 @@ async function callModelWithTool<T>(
   const response = await client.messages.stream({
     model,
     max_tokens: maxTokens,
-    tools: [tool],
+    tools: [{ ...tool, cache_control: { type: "ephemeral" as const } }],
     tool_choice: { type: "tool" as const, name: tool.name },
     messages: [{ role: "user", content: prompt }],
   }).finalMessage();
