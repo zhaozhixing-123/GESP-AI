@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getUserFromRequest, verifyToken } from "@/lib/auth";
+import { getUserFromRequest, getJwtSecret } from "@/lib/auth";
+import { isValidWebhookUrl } from "@/lib/webhook";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret";
 
 function getParentToken(request: NextRequest): string | null {
   return request.headers.get("x-parent-token");
@@ -12,7 +11,7 @@ function getParentToken(request: NextRequest): string | null {
 
 function verifyParentToken(token: string): { userId: number } | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as any;
+    const payload = jwt.verify(token, getJwtSecret()) as any;
     if (payload.type !== "parent") return null;
     return { userId: payload.userId };
   } catch {
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   const parentToken = jwt.sign(
     { userId: user.userId, type: "parent" },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: "15m" }
   );
 
@@ -74,6 +73,13 @@ export async function PUT(request: NextRequest) {
   if (!parent) return Response.json({ error: "家长验证已过期" }, { status: 401 });
 
   const { feishuWebhook } = await request.json();
+
+  if (feishuWebhook && !isValidWebhookUrl(feishuWebhook)) {
+    return Response.json(
+      { error: "Webhook URL 不合法，仅支持飞书 Webhook（https://open.feishu.cn/...）" },
+      { status: 400 }
+    );
+  }
 
   await prisma.user.update({
     where: { id: parent.userId },

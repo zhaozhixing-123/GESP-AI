@@ -5,7 +5,7 @@ import { fetchLuoguProblem, fetchLuoguProblemList } from "@/lib/luogu";
 
 /** POST /api/admin/import — 单题或批量导入 */
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   try {

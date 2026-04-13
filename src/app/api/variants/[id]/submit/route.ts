@@ -18,6 +18,7 @@ export async function POST(
   try {
     const { code } = await request.json();
     if (!code?.trim()) return Response.json({ error: "代码不能为空" }, { status: 400 });
+    if (code.length > 50000) return Response.json({ error: "代码长度不能超过 50000 字符" }, { status: 400 });
 
     // 鉴权：用户必须有解锁记录
     const variant = await prisma.variantProblem.findUnique({
@@ -94,7 +95,7 @@ export async function POST(
     return Response.json({ submission, results });
   } catch (e: any) {
     console.error("[VariantSubmit]", e);
-    return Response.json({ error: e.message || "提交失败" }, { status: 500 });
+    return Response.json({ error: "提交失败，请重试" }, { status: 500 });
   }
 }
 

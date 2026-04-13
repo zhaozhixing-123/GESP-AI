@@ -8,7 +8,7 @@ import { fetchLuoguProblem } from "@/lib/luogu";
  * 流式返回进度，避免长时间请求超时
  */
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const body = await request.json().catch(() => ({}));

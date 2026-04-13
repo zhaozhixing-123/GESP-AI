@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
     if (!code?.trim()) {
       return Response.json({ error: "代码不能为空" }, { status: 400 });
     }
+    if (code.length > 50000) {
+      return Response.json({ error: "代码长度不能超过 50000 字符" }, { status: 400 });
+    }
 
     // 如果传了 problemId 且没有自定义 stdin，用样例逐个运行并对比
     if (problemId && stdin === undefined) {
@@ -109,6 +112,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (e: any) {
     console.error("Run error:", e);
-    return Response.json({ error: e.message || "运行失败" }, { status: 500 });
+    return Response.json({ error: "运行失败，请重试" }, { status: 500 });
   }
 }

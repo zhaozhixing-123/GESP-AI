@@ -43,7 +43,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证金额（虎皮椒传来的是元，我们存的是分）
-    const notifyAmount = Math.round(parseFloat(params.total_fee) * 100);
+    // 用字符串拆分避免浮点精度问题（如 19.90 * 100 != 1990）
+    const feeParts = (params.total_fee || "0").split(".");
+    const yuan = parseInt(feeParts[0] || "0") * 100;
+    const fen = feeParts[1] ? parseInt(feeParts[1].padEnd(2, "0").slice(0, 2)) : 0;
+    const notifyAmount = yuan + fen;
     if (notifyAmount !== order.amount) {
       console.error("[Payment/Notify] 金额不匹配", { notifyAmount, expected: order.amount });
       return new Response("amount mismatch", { status: 400 });

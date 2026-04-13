@@ -1,11 +1,20 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
+import { getSubscriptionInfo } from "@/lib/subscription";
 
 export async function GET(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  const sub = await getSubscriptionInfo(user.userId);
+  if (!sub.isPaid) {
+    return Response.json(
+      { error: "模拟考试为会员功能，请订阅后使用" },
+      { status: 403 }
+    );
   }
 
   const url = new URL(request.url);
@@ -39,6 +48,6 @@ export async function GET(request: NextRequest) {
     return Response.json({ problems: selected });
   } catch (e: any) {
     console.error("Exam problems error:", e);
-    return Response.json({ error: e.message || "获取题目失败" }, { status: 500 });
+    return Response.json({ error: "获取题目失败，请重试" }, { status: 500 });
   }
 }

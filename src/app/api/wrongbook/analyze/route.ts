@@ -3,11 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { getSubscriptionInfo } from "@/lib/subscription";
 import { streamWrongCodeAnalysis } from "@/lib/aiteacher";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+const ANALYZE_RATE_LIMIT = { name: "ai_analyze", windowMs: 60_000, maxRequests: 5 };
 
 /** POST /api/wrongbook/analyze — 错题一次性分析，不读写 ChatHistory */
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
+
+  const rl = checkRateLimit(ANALYZE_RATE_LIMIT, `user_${user.userId}`);
+  if (!rl.allowed) {
+    return Response.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
+  }
 
   try {
     const { problemId } = await request.json();
@@ -41,6 +49,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (e: any) {
     console.error("[WrongbookAnalyze]", e);
-    return Response.json({ error: e.message || "分析失败" }, { status: 500 });
+    return Response.json({ error: "分析失败，请重试" }, { status: 500 });
   }
 }

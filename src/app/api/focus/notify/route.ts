@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTokenFromRequest, verifyToken } from "@/lib/auth";
+import { isValidWebhookUrl } from "@/lib/webhook";
 
 export async function POST(request: NextRequest) {
   const token = getTokenFromRequest(request);
@@ -19,6 +20,10 @@ export async function POST(request: NextRequest) {
 
     if (!user?.feishuWebhook) {
       return Response.json({ sent: false, reason: "未配置飞书 Webhook" });
+    }
+
+    if (!isValidWebhookUrl(user.feishuWebhook)) {
+      return Response.json({ sent: false, reason: "Webhook URL 不合法" });
     }
 
     const now = new Date().toLocaleString("zh-CN", {

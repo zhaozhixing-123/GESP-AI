@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 
 /** GET /api/admin/users — 用户列表（含订阅状态和提交数） */
 export async function GET(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const users = await prisma.user.findMany({

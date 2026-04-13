@@ -17,6 +17,9 @@ export async function POST(request: NextRequest) {
     if (!problemId || !code?.trim()) {
       return Response.json({ error: "题目ID和代码不能为空" }, { status: 400 });
     }
+    if (code.length > 50000) {
+      return Response.json({ error: "代码长度不能超过 50000 字符" }, { status: 400 });
+    }
 
     const allowed = await checkFreeLimit(user.userId, parseInt(problemId));
     if (!allowed) {
@@ -150,7 +153,7 @@ export async function POST(request: NextRequest) {
   } catch (e: any) {
     console.error("Submission error:", e);
     return Response.json(
-      { error: e.message || "提交失败，请重试" },
+      { error: "提交失败，请重试" },
       { status: 500 }
     );
   }

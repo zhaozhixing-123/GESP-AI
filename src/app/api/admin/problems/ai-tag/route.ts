@@ -33,7 +33,7 @@ const GESP_TAGS = [
  * 支持传 { all: true } 强制重新打标全部题目
  */
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const body = await request.json().catch(() => ({}));

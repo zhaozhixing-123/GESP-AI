@@ -30,18 +30,22 @@ export async function POST(request: NextRequest) {
       data: { userId: user.userId, orderNo, plan, amount, status: "pending" },
     });
 
-    const origin = request.headers.get("origin") ?? "https://gesp.ai";
+    const siteOrigin = process.env.SITE_ORIGIN;
+    if (!siteOrigin) {
+      console.error("[Payment/Create] SITE_ORIGIN 环境变量未配置");
+      return Response.json({ error: "支付功能配置不完整，请联系管理员" }, { status: 500 });
+    }
     const { qrcodeUrl } = await createXunhuOrder({
       orderNo,
       amount,
       plan,
-      notifyUrl: `${origin}/api/payment/notify`,
-      returnUrl: `${origin}/payment/success`,
+      notifyUrl: `${siteOrigin}/api/payment/notify`,
+      returnUrl: `${siteOrigin}/payment/success`,
     });
 
     return Response.json({ orderNo, qrcodeUrl, amount });
   } catch (e: any) {
     console.error("[Payment/Create]", e);
-    return Response.json({ error: e.message ?? "创建订单失败" }, { status: 500 });
+    return Response.json({ error: "创建订单失败，请重试" }, { status: 500 });
   }
 }

@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { checkFreeLimit, getSubscriptionInfo } from "@/lib/subscription";
 import { chat } from "@/lib/aiteacher";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+const CHAT_RATE_LIMIT = { name: "ai_chat", windowMs: 60_000, maxRequests: 10 };
+
+// 简易并发锁：同一用户同时只能有一个 AI 请求
+const activeUsers = new Set<number>();
 
 /** POST /api/chat — 发送消息给 AI 老师（流式响应） */
 export async function POST(request: NextRequest) {
@@ -11,17 +17,30 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }
 
+  const rl = checkRateLimit(CHAT_RATE_LIMIT, `user_${user.userId}`);
+  if (!rl.allowed) {
+    return Response.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
+  }
+
+  if (activeUsers.has(user.userId)) {
+    return Response.json({ error: "上一条消息还在处理中，请稍候" }, { status: 429 });
+  }
+
   try {
+    activeUsers.add(user.userId);
     const { problemId, variantId, message, code } = await request.json();
 
     if (!message?.trim()) {
       return Response.json({ error: "消息不能为空" }, { status: 400 });
     }
+    if (message.length > 2000) {
+      return Response.json({ error: "消息长度不能超过 2000 字符" }, { status: 400 });
+    }
     if (!problemId && !variantId) {
       return Response.json({ error: "需要提供 problemId 或 variantId" }, { status: 400 });
     }
 
-    // 变形题对话跳过付费墙（入口已受 VariantUnlock 保护），真题走正常流程
+    // 真题：检查免费题目额度
     if (!variantId) {
       const allowed = await checkFreeLimit(user.userId, parseInt(problemId));
       if (!allowed) {
@@ -30,19 +49,20 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
+    }
 
-      // 免费用户在该题对话限 5 次
-      const sub = await getSubscriptionInfo(user.userId);
-      if (!sub.isPaid) {
-        const chatCount = await prisma.chatHistory.count({
-          where: { userId: user.userId, problemId: parseInt(problemId), role: "user" },
-        });
-        if (chatCount >= 5) {
-          return Response.json(
-            { error: "chat_limit", message: "免费对话次数已用完，订阅后解锁无限对话" },
-            { status: 403 }
-          );
-        }
+    // 免费用户对话限 5 次（真题和变形题都受限）
+    const sub = await getSubscriptionInfo(user.userId);
+    if (!sub.isPaid) {
+      const chatWhere = variantId
+        ? { userId: user.userId, variantId: parseInt(variantId), role: "user" as const }
+        : { userId: user.userId, problemId: parseInt(problemId), role: "user" as const };
+      const chatCount = await prisma.chatHistory.count({ where: chatWhere });
+      if (chatCount >= 5) {
+        return Response.json(
+          { error: "chat_limit", message: "免费对话次数已用完，订阅后解锁无限对话" },
+          { status: 403 }
+        );
       }
     }
 
@@ -63,7 +83,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (e: any) {
     console.error("Chat error:", e);
-    return Response.json({ error: e.message || "对话失败" }, { status: 500 });
+    return Response.json({ error: "对话失败，请重试" }, { status: 500 });
+  } finally {
+    activeUsers.delete(user.userId);
   }
 }
 

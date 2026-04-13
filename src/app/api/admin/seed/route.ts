@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import seedData from "../../../../../prisma/seed-data.json";
 
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   try {

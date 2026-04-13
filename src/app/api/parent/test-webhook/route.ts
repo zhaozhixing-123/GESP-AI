@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
+import { isValidWebhookUrl } from "@/lib/webhook";
 
 // POST: 测试飞书 Webhook
 export async function POST(request: NextRequest) {
@@ -8,6 +9,13 @@ export async function POST(request: NextRequest) {
 
   const { webhookUrl } = await request.json();
   if (!webhookUrl) return Response.json({ error: "请输入 Webhook URL" }, { status: 400 });
+
+  if (!isValidWebhookUrl(webhookUrl)) {
+    return Response.json(
+      { error: "Webhook URL 不合法，仅支持飞书 Webhook（https://open.feishu.cn/...）" },
+      { status: 400 }
+    );
+  }
 
   try {
     const text = `[GESP.AI 测试消息]\n飞书 Webhook 配置成功！\n学生：${user.username}\n这是一条测试消息，确认通知功能正常。`;

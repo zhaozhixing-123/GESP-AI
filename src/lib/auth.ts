@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
 import { NextRequest } from "next/server";
+import { prisma } from "./prisma";
 
-function getJwtSecret(): string {
+export function getJwtSecret(): string {
   const s = process.env.JWT_SECRET;
   if (!s) throw new Error("JWT_SECRET 环境变量未设置");
   return s;
@@ -39,9 +40,18 @@ export function getUserFromRequest(request: NextRequest): JwtPayload | null {
   return verifyToken(token);
 }
 
-export function requireAdmin(request: NextRequest): JwtPayload | Response {
-  const user = getUserFromRequest(request);
-  if (!user) return Response.json({ error: "未登录" }, { status: 401 });
-  if (user.role !== "admin") return Response.json({ error: "无权限" }, { status: 403 });
-  return user;
+export async function requireAdmin(request: NextRequest): Promise<JwtPayload | Response> {
+  const jwtUser = getUserFromRequest(request);
+  if (!jwtUser) return Response.json({ error: "未登录" }, { status: 401 });
+
+  // 从数据库验证实时角色，不信任 JWT 中缓存的 role
+  const dbUser = await prisma.user.findUnique({
+    where: { id: jwtUser.userId },
+    select: { role: true },
+  });
+  if (!dbUser || dbUser.role !== "admin") {
+    return Response.json({ error: "无权限" }, { status: 403 });
+  }
+
+  return { ...jwtUser, role: dbUser.role };
 }

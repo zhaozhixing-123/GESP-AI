@@ -1,11 +1,28 @@
 import { NextRequest } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
+import { getSubscriptionInfo } from "@/lib/subscription";
 import { streamExamReview, ExamProblemEntry } from "@/lib/aiteacher";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+const REVIEW_RATE_LIMIT = { name: "ai_review", windowMs: 300_000, maxRequests: 3 };
 
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  const sub = await getSubscriptionInfo(user.userId);
+  if (!sub.isPaid) {
+    return Response.json(
+      { error: "模拟考试为会员功能，请订阅后使用" },
+      { status: 403 }
+    );
+  }
+
+  const rl = checkRateLimit(REVIEW_RATE_LIMIT, `user_${user.userId}`);
+  if (!rl.allowed) {
+    return Response.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
   }
 
   try {
@@ -29,6 +46,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (e: any) {
     console.error("Exam review error:", e);
-    return Response.json({ error: e.message || "生成报告失败" }, { status: 500 });
+    return Response.json({ error: "生成报告失败，请重试" }, { status: 500 });
   }
 }

@@ -2,9 +2,21 @@ import { NextRequest } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
+
+const LOGIN_RATE_LIMIT = { name: "login", windowMs: 60_000, maxRequests: 10 };
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(LOGIN_RATE_LIMIT, ip);
+    if (!rl.allowed) {
+      return Response.json(
+        { error: "登录尝试过于频繁，请稍后再试" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+      );
+    }
+
     const { username, password } = await request.json();
 
     if (!username || !password) {

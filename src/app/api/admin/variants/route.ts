@@ -16,7 +16,7 @@ const TARGET_VARIANTS_PER_PROBLEM = 4;
  * 批量为所有 ready 变形题不足 4 道的题目逐一触发生成。
  */
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const url = new URL(request.url);
@@ -271,7 +271,7 @@ async function handleBatch(request: NextRequest): Promise<Response> {
 // ─── GET：查询所有题目的变形题状态 ────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const url = new URL(request.url);
@@ -307,7 +307,7 @@ export async function GET(request: NextRequest) {
 // ─── 删除单道变形题 ────────────────────────────────────────────────────────────
 
 export async function DELETE(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const url = new URL(request.url);

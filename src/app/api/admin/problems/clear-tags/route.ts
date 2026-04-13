@@ -7,7 +7,7 @@ import { requireAdmin } from "@/lib/auth";
  * 将所有题目的 tags 重置为 "[]"
  */
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   const result = await prisma.problem.updateMany({ data: { tags: "[]" } });

@@ -5,7 +5,7 @@ import { fetchLuoguProblemList } from "@/lib/luogu";
 
 /** POST /api/admin/import/list — 获取洛谷列表页的所有题号 */
 export async function POST(request: NextRequest) {
-  const auth = requireAdmin(request);
+  const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   try {
