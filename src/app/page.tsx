@@ -59,7 +59,6 @@ function ChatDemo() {
   const [typing, setTyping] = useState(false);
   const [started, setStarted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   // IntersectionObserver 触发播放
   useEffect(() => {
@@ -103,8 +102,13 @@ function ChatDemo() {
     return () => { cancelled = true; };
   }, [started, playSequence]);
 
+  // 只滚动聊天容器内部，不影响页面滚动
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = scrollRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, typing]);
 
   return (
@@ -117,7 +121,7 @@ function ChatDemo() {
           <span className="text-xs text-gray-600 ml-auto font-mono">晚上 9:47</span>
         </div>
         {/* 消息区 */}
-        <div className="h-[340px] overflow-y-auto p-4 space-y-3">
+        <div ref={scrollRef} className="h-[340px] overflow-y-auto p-4 space-y-3">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "student" ? "justify-end" : "justify-start"}`}>
               <div
@@ -140,7 +144,6 @@ function ChatDemo() {
               </div>
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
       </div>
       <p className="mt-3 text-center text-xs text-gray-500">真实 AI 对话示例 · Claude 驱动</p>
