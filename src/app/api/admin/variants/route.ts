@@ -97,7 +97,15 @@ async function handleSingle(problemId: number): Promise<Response> {
       let successCount = 0;
 
       for (let i = 1; i <= needed; i++) {
-        // 占位记录，防并发重复触发
+        // 每次迭代前重新核查数量，防止并发请求超出上限
+        const currentCount = await prisma.variantProblem.count({
+          where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
+        });
+        if (currentCount >= TARGET_VARIANTS_PER_PROBLEM) {
+          send({ step: "skipped", current: i, total: needed, message: `已达到 ${TARGET_VARIANTS_PER_PROBLEM} 道上限，停止生成` });
+          break;
+        }
+
         let variantId: number | null = null;
         try {
           const placeholder = await prisma.variantProblem.create({
