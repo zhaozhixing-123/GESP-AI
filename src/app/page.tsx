@@ -1,445 +1,509 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-// ─── 数据（可随时更新） ────────────────────────────────────────────────────────
-const STATS = [
-  { value: "200+", label: "道历年真题" },
-  { value: "800+", label: "道 AI 变形题" },
-  { value: "1-8", label: "级全部覆盖" },
+// ─── 常量 ──────────────────────────────────────────────────────────────────────
+
+const REGISTER_URL = "/register";
+
+const CHAT_MESSAGES = [
+  { role: "student" as const, text: "老师，这道题我用了循环但一直输出错误答案\u2026" },
+  { role: "ai" as const, text: "我看到你的循环了。你觉得循环的终止条件对吗？当 i 等于 n 的时候，循环还会执行吗？" },
+  { role: "student" as const, text: "嗯\u2026i 等于 n 的时候应该不执行了？" },
+  { role: "ai" as const, text: "对，那你再看看你写的条件 i <= n，当 i 等于 n 的时候会发生什么？" },
+  { role: "student" as const, text: "啊！多算了一次！应该是 i < n！" },
+  { role: "ai" as const, text: "完全正确 \ud83d\udc4f 边界条件是最容易出错的地方。改好之后再运行试试？" },
 ];
 
 const PLANS = [
-  {
-    id: "monthly",
-    name: "月度",
-    price: 99,
-    unit: "/ 月",
-    perMonth: null,
-    highlight: false,
-    desc: "灵活体验，随时开始",
-  },
-  {
-    id: "quarterly",
-    name: "季度",
-    price: 199,
-    unit: "/ 季",
-    perMonth: "约 ¥66 / 月",
-    highlight: true,
-    desc: "最受欢迎，备考首选",
-  },
-  {
-    id: "yearly",
-    name: "年度",
-    price: 599,
-    unit: "/ 年",
-    perMonth: "约 ¥49 / 月",
-    highlight: false,
-    desc: "长期备考，最划算",
-  },
+  { id: "monthly", name: "月卡", price: 99, unit: "/月", perMonth: "¥99/月", desc: "灵活体验", highlight: false },
+  { id: "quarterly", name: "季卡", price: 199, unit: "/季", perMonth: "约¥66/月", desc: "备考周期首选", highlight: true },
+  { id: "yearly", name: "年卡", price: 599, unit: "/年", perMonth: "约¥49/月", desc: "长期最划算", highlight: false },
 ];
 
-// ─── 组件 ──────────────────────────────────────────────────────────────────────
+const FEATURES = [
+  "全部真题无限刷",
+  "AI 老师无限对话",
+  "全部变形题解锁",
+  "AI 错因分析",
+  "模拟考试 + AI 诊断报告",
+  "专注力追踪 + 家长通知",
+];
 
-function GradientText({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
-      {children}
-    </span>
-  );
+// ─── 滚动渐入 Hook ────────────────────────────────────────────────────────────
+
+function useFadeIn() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold: 0.15 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return { ref, className: `transition-all duration-700 ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}` };
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+// ─── AI 对话演示组件 ──────────────────────────────────────────────────────────
+
+function ChatDemo() {
+  const [messages, setMessages] = useState<typeof CHAT_MESSAGES>([]);
+  const [typing, setTyping] = useState(false);
+  const [started, setStarted] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // IntersectionObserver 触发播放
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting && !started) { setStarted(true); obs.disconnect(); } },
+      { threshold: 0.3 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [started]);
+
+  const playSequence = useCallback(async () => {
+    setMessages([]);
+    setTyping(false);
+
+    for (let i = 0; i < CHAT_MESSAGES.length; i++) {
+      const msg = CHAT_MESSAGES[i];
+      if (msg.role === "ai") {
+        setTyping(true);
+        await sleep(1500 + Math.random() * 500);
+        setTyping(false);
+      } else {
+        await sleep(800);
+      }
+      setMessages((prev) => [...prev, msg]);
+      await sleep(300);
+    }
+    await sleep(3000);
+  }, []);
+
+  useEffect(() => {
+    if (!started) return;
+    let cancelled = false;
+    (async () => {
+      while (!cancelled) {
+        await playSequence();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [started, playSequence]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, typing]);
+
   return (
-    <div className={`rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm ${className}`}>
-      {children}
+    <div ref={containerRef} className="mx-auto w-full max-w-md">
+      <div className="rounded-2xl border border-white/10 bg-[#111827] shadow-2xl overflow-hidden">
+        {/* 顶栏 */}
+        <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
+          <span className="h-2 w-2 rounded-full bg-[#34d399]" />
+          <span className="text-sm text-gray-400">AI 老师在线</span>
+          <span className="text-xs text-gray-600 ml-auto font-mono">晚上 9:47</span>
+        </div>
+        {/* 消息区 */}
+        <div className="h-[340px] overflow-y-auto p-4 space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex ${msg.role === "student" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  msg.role === "student"
+                    ? "bg-[#1d5bd6] text-white rounded-br-md"
+                    : "bg-white/10 text-gray-200 rounded-bl-md"
+                }`}
+              >
+                {msg.text}
+              </div>
+            </div>
+          ))}
+          {typing && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl rounded-bl-md bg-white/10 px-4 py-3 flex gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
+                <span className="h-2 w-2 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+                <span className="h-2 w-2 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+      <p className="mt-3 text-center text-xs text-gray-500">真实 AI 对话示例 · Claude 驱动</p>
     </div>
   );
 }
 
-function SectionTag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-block rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-400">
-      {children}
-    </span>
-  );
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-// ─── 主页面 ────────────────────────────────────────────────────────────────────
+// ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 export default function LandingPage() {
   const router = useRouter();
-  const featuresRef = useRef<HTMLDivElement>(null);
+  const [selectedPlan, setSelectedPlan] = useState("quarterly");
 
+  // 已登录用户直接跳转题库
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("token")) {
       router.replace("/problems");
     }
   }, [router]);
 
-  return (
-    <div className="min-h-screen bg-[#080810] text-white">
-      {/* 全局网格背景 */}
-      <div
-        className="pointer-events-none fixed inset-0 opacity-30"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(139,92,246,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.08) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }}
-      />
+  const fade1 = useFadeIn();
+  const fade2 = useFadeIn();
+  const fade3 = useFadeIn();
+  const fade4 = useFadeIn();
+  const fade5 = useFadeIn();
+  const fade6 = useFadeIn();
+  const fade7 = useFadeIn();
+  const fade8 = useFadeIn();
 
-      {/* ── Nav ─────────────────────────────────────────────────────────────── */}
-      <nav className="fixed top-0 z-50 w-full border-b border-white/5 bg-[#080810]/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-lg font-bold tracking-tight">
-            <GradientText>GESP.AI</GradientText>
+  const plan = PLANS.find((p) => p.id === selectedPlan)!;
+
+  return (
+    <div className="min-h-screen bg-[#f7f5f0] text-[#0c1524]" style={{ fontFamily: "'Noto Sans SC', sans-serif" }}>
+
+      {/* ── 导航栏 ──────────────────────────────────────────────────────── */}
+      <nav className="fixed top-0 z-50 w-full border-b border-[#e8e4db] bg-[#f7f5f0]/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+          <span className="text-lg font-bold tracking-tight text-[#1d5bd6]" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+            GESP.AI
           </span>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="rounded-lg px-4 py-1.5 text-sm text-gray-400 transition hover:text-white"
-            >
-              登录
-            </Link>
-            <Link
-              href="/register"
-              className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-500"
-            >
-              免费开始
-            </Link>
-          </div>
+          <Link
+            href={REGISTER_URL}
+            className="rounded-lg bg-[#1d5bd6] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-lg"
+          >
+            免费体验
+          </Link>
         </div>
       </nav>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────────── */}
-      <section className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pt-20 text-center">
-        {/* 光晕 */}
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[500px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-600/15 blur-[120px]" />
-        <div className="pointer-events-none absolute left-1/3 top-1/3 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600/10 blur-[80px]" />
+      {/* ── 第一屏 Hero ─────────────────────────────────────────────────── */}
+      <section className="relative flex min-h-screen flex-col items-center justify-center px-6 pt-20 text-center overflow-hidden">
+        {/* 背景：淡蓝径向渐变 + 网点 */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_30%,rgba(29,91,214,0.06)_0%,transparent_70%)]" />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.03]"
+          style={{ backgroundImage: "radial-gradient(circle, #0c1524 0.8px, transparent 0.8px)", backgroundSize: "20px 20px" }}
+        />
 
-        <div className="relative z-10 max-w-4xl">
-          <SectionTag>专为 GESP 竞赛设计的 AI 学习平台</SectionTag>
+        <div className="relative z-10 max-w-[720px]">
+          <span className="inline-block rounded-full border border-[#1d5bd6]/20 bg-[#1d5bd6]/5 px-4 py-1.5 text-xs font-medium text-[#1d5bd6]">
+            由一名 GESP 五级小学生创建并验证
+          </span>
 
-          <h1 className="mt-6 text-5xl font-bold leading-tight tracking-tight md:text-7xl">
-            考过 GESP，
+          <h1 className="mt-8 text-3xl font-bold leading-snug tracking-tight sm:text-4xl md:text-[2.75rem] md:leading-[1.3]" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+            课堂教了算法，
             <br />
-            <GradientText>不只是背题</GradientText>
+            但孩子自己练题卡住的时候，
+            <br />
+            没人能帮他
           </h1>
 
-          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-gray-400">
-            真题刷题 × AI 引导思考 × 变形题巩固
+          <p className="mx-auto mt-6 max-w-lg text-base leading-relaxed text-[#444] sm:text-lg">
+            GESP.AI——孩子自己练题时，身边的 AI 老师。
             <br />
-            从「做错」到「真懂」的完整闭环
+            卡住了问一句，不给答案，引导他自己想明白。
           </p>
 
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+          <div className="mt-10">
             <Link
-              href="/register"
-              className="rounded-xl bg-violet-600 px-8 py-3 text-base font-semibold text-white shadow-lg shadow-violet-600/25 transition hover:bg-violet-500 hover:shadow-violet-500/40"
+              href={REGISTER_URL}
+              className="inline-block rounded-xl bg-[#1d5bd6] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[#1d5bd6]/20 transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#1d5bd6]/30"
             >
-              免费开始体验
+              免费体验一道题
             </Link>
-            <button
-              onClick={() => featuresRef.current?.scrollIntoView({ behavior: "smooth" })}
-              className="rounded-xl border border-white/15 px-8 py-3 text-base font-medium text-gray-300 transition hover:border-white/30 hover:text-white"
-            >
-              了解更多
-            </button>
+            <p className="mt-3 text-sm text-[#aaa]">
+              完整体验 AI 老师 + 变形题 + 错因分析，无需付费
+            </p>
           </div>
-
-          <p className="mt-4 text-sm text-gray-600">免费体验 1 道完整题目，无需信用卡</p>
         </div>
 
-        {/* 向下箭头 */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 animate-bounce text-gray-600">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-          </svg>
+        {/* 向下滚动提示 */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-[#aaa] animate-bounce">
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-xs">往下看</span>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
+          </div>
         </div>
       </section>
 
-      {/* ── 创始人故事 ──────────────────────────────────────────────────────────── */}
-      <section className="relative px-6 py-24">
-        <div className="mx-auto max-w-3xl">
-          <Card className="relative overflow-hidden">
-            {/* 装饰性光晕 */}
-            <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-violet-600/20 blur-[60px]" />
-            <div className="relative z-10">
-              <div className="mb-4 text-3xl">💬</div>
-              <blockquote className="text-xl font-medium leading-relaxed text-gray-100 md:text-2xl">
-                "我是一名五年级小学生，备考 GESP 时请了私教，但费用太贵。
-                于是我决定自己开发一个 AI 平台。用这个产品备考后，
-                <span className="text-violet-400">我通过了 GESP 五级</span>
-                ——成了第一个验证它有效的用户。"
-              </blockquote>
-              <div className="mt-6 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-sm font-bold">
-                  G
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-white">GESP.AI 创始人</div>
-                  <div className="text-xs text-gray-500">小学五年级 · GESP 五级认证</div>
-                </div>
-              </div>
+      {/* ── 第二屏 场景 ─────────────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-20 md:py-28">
+        <div className="mx-auto max-w-[700px]">
+          <div ref={fade1.ref} className={fade1.className}>
+            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
+              你是不是也经历过
+            </span>
+          </div>
+
+          {/* 场景一 */}
+          <div ref={fade2.ref} className={`mt-10 ${fade2.className}`}>
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6 md:p-8">
+              <span className="inline-block rounded bg-[#0c1524] px-2 py-0.5 text-xs font-mono text-white">晚上 9:12</span>
+              <p className="mt-4 text-[#444] leading-relaxed">
+                孩子刷题卡住了。他盯着屏幕，不知道哪里错了。你走过去看了一眼——看不懂 C++。他要么放弃这道题，要么打开搜索引擎，把别人的答案抄了一遍。
+              </p>
+              <p className="mt-3 text-sm italic text-[#1d5bd6]">
+                这道题"过了"。但你们都知道，他没有学会。
+              </p>
             </div>
-          </Card>
+          </div>
+
+          {/* 场景二 */}
+          <div ref={fade3.ref} className={`mt-6 ${fade3.className}`}>
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6 md:p-8">
+              <span className="inline-block rounded bg-[#0c1524] px-2 py-0.5 text-xs font-mono text-white">考前一周</span>
+              <p className="mt-4 text-[#444] leading-relaxed">
+                你问孩子准备得怎么样，他说"差不多了"。你想帮他检验一下，但你不知道怎么检验。考试那天，题目换了个情境。成绩出来的那一刻，你才知道"差不多了"到底差多少。
+              </p>
+            </div>
+          </div>
+
+          {/* 转折 */}
+          <div ref={fade4.ref} className={`mt-8 ${fade4.className}`}>
+            <div className="rounded-xl bg-[#0c1524] p-6 md:p-8 text-gray-300">
+              <p className="leading-relaxed">问题不在课堂，也不在孩子。</p>
+              <p className="mt-2 font-bold text-white leading-relaxed">
+                课堂负责"教"，但孩子需要帮助的时刻，是自己"练"的时候——而那个时刻，没有人在。
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* ── 痛点 ────────────────────────────────────────────────────────────────── */}
-      <section className="px-6 py-16">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-12 text-center">
-            <SectionTag>你是否也遇到这些问题</SectionTag>
+      {/* ── 第三屏 AI 老师 ──────────────────────────────────────────────── */}
+      <section className="bg-gradient-to-b from-[#0c1524] to-[#111d30] px-6 py-20 md:py-28">
+        <div className="mx-auto max-w-[720px]">
+          <div ref={fade5.ref} className={fade5.className}>
+            <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-[#4a7fe8]">
+              现在，有人在了
+            </span>
+
+            <h2 className="mt-6 text-2xl font-bold text-white sm:text-3xl md:text-4xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              晚上九点，AI 老师还在
+            </h2>
+            <p className="mt-4 max-w-lg text-base leading-relaxed text-gray-400">
+              孩子卡住的时候发一条消息，AI 老师不会直接给答案——
+              而是问他一个问题，引导他自己找到答案。
+            </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+
+          {/* AI 对话演示 */}
+          <div className="mt-10">
+            <ChatDemo />
+          </div>
+
+          <div ref={fade6.ref} className={`mt-10 text-center ${fade6.className}`}>
+            <p className="text-base leading-relaxed text-gray-300">
+              不给答案，只问问题。
+              <br />
+              像一个有耐心的老师坐在旁边——
+              <br />
+              24 小时在线，随时可以问。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 第四屏 做错了不要紧 ─────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-20 md:py-28">
+        <div className="mx-auto max-w-[760px]">
+          <div ref={fade7.ref} className={fade7.className}>
+            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
+              从出错到掌握
+            </span>
+            <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              做错了？AI 陪他把这个坑填上。
+            </h2>
+          </div>
+
+          <div className="mt-10 grid gap-6 md:grid-cols-2">
+            {/* 步骤一 */}
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1d5bd6]/10 text-sm font-bold text-[#1d5bd6]">
+                1
+              </span>
+              <h3 className="mt-4 text-lg font-bold">AI 告诉他为什么错</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#444]">
+                不只说"答案不对"——哪里错了、这类错误为什么容易犯、下次怎么避免。从搞懂一道题，到搞懂一类题。
+              </p>
+            </div>
+            {/* 步骤二 */}
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#34d399]/10 text-sm font-bold text-[#34d399]">
+                2
+              </span>
+              <h3 className="mt-4 text-lg font-bold">自动出一道类似的题再练一遍</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#444]">
+                同一个知识点，换个情境。做对了，这个坑就算填上了。不用等到下周上课。
+              </p>
+            </div>
+          </div>
+
+          {/* 数据条 */}
+          <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
-              {
-                icon: "💸",
-                title: "私教太贵",
-                desc: "一对一辅导动辄数百元 / 小时，长期备考费用难以承受",
-              },
-              {
-                icon: "😰",
-                title: "背题不管用",
-                desc: "题目换个情境就不会了，考试遇到新题型直接懵",
-              },
-              {
-                icon: "🌫️",
-                title: "不知盲点在哪",
-                desc: "题做对了，但不知道是真懂还是碰巧蒙对，心里没底",
-              },
+              { value: "200+", label: "道历年真题" },
+              { value: "800+", label: "道 AI 变形题" },
+              { value: "1-8 级", label: "全覆盖" },
+              { value: "24h", label: "AI 老师在线" },
             ].map((item) => (
-              <Card key={item.title}>
-                <div className="mb-3 text-2xl">{item.icon}</div>
-                <h3 className="mb-2 font-semibold text-white">{item.title}</h3>
-                <p className="text-sm leading-relaxed text-gray-400">{item.desc}</p>
-              </Card>
+              <div key={item.label} className="rounded-lg border border-[#e8e4db] bg-white px-4 py-4 text-center">
+                <div className="text-xl font-bold text-[#1d5bd6] sm:text-2xl">{item.value}</div>
+                <div className="mt-1 text-xs text-[#777]">{item.label}</div>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── How it works ────────────────────────────────────────────────────────── */}
-      <section ref={featuresRef} className="px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-4 text-center">
-            <SectionTag>产品逻辑</SectionTag>
+      {/* ── 第五屏 故事 + 定价 ──────────────────────────────────────────── */}
+      <section className="bg-gradient-to-b from-[#eef3fb] to-[#f7f5f0] px-6 py-20 md:py-28">
+        <div className="mx-auto max-w-[640px]">
+          {/* 创始人故事 */}
+          <div ref={fade8.ref} className={fade8.className}>
+            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
+              关于创造者
+            </span>
+            <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              这个产品的创造者，今年五年级。
+            </h2>
           </div>
-          <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
-            三步完成从做题到<GradientText>真正掌握</GradientText>
-          </h2>
-          <div className="grid gap-6 md:grid-cols-3">
-            {[
-              {
-                step: "01",
-                title: "做真题",
-                desc: "完整的 GESP 历年真题题库，在线写代码提交，即时判题，覆盖 1-8 级。",
-                icon: "📝",
-              },
-              {
-                step: "02",
-                title: "做错解锁变形题",
-                desc: "做错后自动解锁 AI 生成的同知识点变形题，换情境再练，确认真正掌握。",
-                icon: "🔓",
-              },
-              {
-                step: "03",
-                title: "AI 老师引导突破",
-                desc: "遇到卡壳，AI 老师用启发式对话引导你自己想明白，不会直接给答案。",
-                icon: "🤖",
-              },
-            ].map((item, i) => (
-              <div key={item.step} className="relative">
-                {/* 连接线 */}
-                {i < 2 && (
-                  <div className="absolute -right-3 top-8 hidden h-0.5 w-6 bg-gradient-to-r from-violet-500/50 to-transparent md:block" />
+
+          <div className="mt-8 rounded-xl border border-[#e8e4db] bg-white p-6 md:p-8">
+            <p className="text-[#444] leading-relaxed">
+              赵知行，五年级。从四年级开始学信息学。
+            </p>
+            <p className="mt-4 text-[#444] leading-relaxed">
+              他在备考中碰到了和所有孩子一样的问题：<strong className="text-[#0c1524]">课上听懂了，回家练题卡住了，没人能帮他。</strong>去网上搜答案吧，搜到了也不知道为什么——下次遇到还是不会。
+            </p>
+            <p className="mt-4 text-[#444] leading-relaxed">
+              他想要的很简单：一个在他卡住的时候，不告诉他答案、但能引导他自己想明白的工具。找不到，他就自己写了一个。
+            </p>
+            <p className="mt-4 text-[#444] leading-relaxed">
+              2026 年 3 月，他用这套方法通过了 <span className="font-bold text-[#1d5bd6]">GESP C++ 五级</span>。现在他把它开放给所有正在备考的孩子。
+            </p>
+          </div>
+
+          {/* 定价 */}
+          <div className="mt-16">
+            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
+              价格透明
+            </span>
+            <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              一节课的价格，换一整个月的 AI 陪练。
+            </h2>
+            <p className="mt-3 text-sm text-[#777]">
+              课堂负责教，GESP.AI 负责练。不是替代，是补全。
+            </p>
+          </div>
+
+          {/* 套餐切换 */}
+          <div className="mt-8 flex rounded-lg border border-[#e8e4db] bg-white p-1">
+            {PLANS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedPlan(p.id)}
+                className={`relative flex-1 rounded-md py-2.5 text-sm font-medium transition ${
+                  selectedPlan === p.id
+                    ? "bg-[#1d5bd6] text-white shadow-sm"
+                    : "text-[#444] hover:bg-gray-50"
+                }`}
+              >
+                {p.name}
+                {p.highlight && (
+                  <span className="absolute -top-2 right-1 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white leading-none">
+                    推荐
+                  </span>
                 )}
-                <Card className="h-full">
-                  <div className="mb-4 flex items-center gap-3">
-                    <span className="text-2xl">{item.icon}</span>
-                    <span className="text-xs font-mono font-bold text-violet-400">{item.step}</span>
-                  </div>
-                  <h3 className="mb-3 text-lg font-semibold text-white">{item.title}</h3>
-                  <p className="text-sm leading-relaxed text-gray-400">{item.desc}</p>
-                </Card>
-              </div>
+              </button>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* ── 核心功能 ─────────────────────────────────────────────────────────────── */}
-      <section className="px-6 py-16">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-4 text-center">
-            <SectionTag>核心功能</SectionTag>
-          </div>
-          <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
-            每个功能都为<GradientText>真正学会</GradientText>而设计
-          </h2>
-          <div className="grid gap-6 md:grid-cols-3">
-            {[
-              {
-                icon: "🔄",
-                title: "变形题系统",
-                badge: "独家",
-                desc: "每道真题配套 4 道 AI 生成的变形题，做错才解锁，换情境再练，防止蒙对就跳过。",
-              },
-              {
-                icon: "🧑‍🏫",
-                title: "AI 老师",
-                badge: "Claude 驱动",
-                desc: "不直接给答案，用苏格拉底式对话引导你自己思考，问题越问越明白。",
-              },
-              {
-                icon: "📚",
-                title: "错题本",
-                desc: "做错的题自动收录，附 AI 错因分析。分级复习，精准攻克薄弱知识点。",
-              },
-            ].map((item) => (
-              <Card key={item.title} className="group transition hover:border-violet-500/30 hover:bg-violet-500/5">
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="text-3xl">{item.icon}</span>
-                  {item.badge && (
-                    <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-medium text-violet-400">
-                      {item.badge}
-                    </span>
-                  )}
-                </div>
-                <h3 className="mb-3 text-lg font-semibold text-white">{item.title}</h3>
-                <p className="text-sm leading-relaxed text-gray-400">{item.desc}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 数字背书 ─────────────────────────────────────────────────────────────── */}
-      <section className="px-6 py-16">
-        <div className="mx-auto max-w-4xl">
-          <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 to-blue-500/10 p-8">
-            <div className="grid grid-cols-3 divide-x divide-white/10">
-              {STATS.map((s) => (
-                <div key={s.label} className="px-6 text-center">
-                  <div className="text-3xl font-bold text-white md:text-4xl">
-                    <GradientText>{s.value}</GradientText>
-                  </div>
-                  <div className="mt-1 text-sm text-gray-400">{s.label}</div>
-                </div>
-              ))}
+          {/* 价格展示 */}
+          <div className="mt-6 rounded-xl border border-[#e8e4db] bg-white p-6 text-center">
+            <div className="flex items-end justify-center gap-1">
+              <span className="text-4xl font-bold text-[#0c1524]">¥{plan.price}</span>
+              <span className="mb-1 text-sm text-[#777]">{plan.unit}</span>
             </div>
-          </div>
-        </div>
-      </section>
+            <p className="mt-1 text-sm text-[#aaa]">{plan.perMonth} · {plan.desc}</p>
 
-      {/* ── 定价 ────────────────────────────────────────────────────────────────── */}
-      <section className="px-6 py-24">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-4 text-center">
-            <SectionTag>价格透明</SectionTag>
-          </div>
-          <h2 className="mb-4 text-center text-3xl font-bold md:text-4xl">
-            比私教省 <GradientText>97%</GradientText>
-          </h2>
-          <p className="mb-16 text-center text-gray-400">
-            私教一对一辅导约 ¥200–500 / 小时，一个月备考少说 ¥2000+
-          </p>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {/* 免费版 */}
-            <Card className="flex flex-col">
-              <div className="mb-1 text-sm text-gray-400">免费体验</div>
-              <div className="mb-1 text-3xl font-bold text-white">¥0</div>
-              <div className="mb-6 text-xs text-gray-500">永久免费</div>
-              <ul className="mb-8 flex-1 space-y-2 text-sm text-gray-400">
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> 1 道完整真题</li>
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> AI 老师答疑</li>
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> 变形题解锁</li>
+            <div className="mt-6 border-t border-[#e8e4db] pt-6">
+              <ul className="space-y-2.5 text-left text-sm text-[#444]">
+                {FEATURES.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5">
+                    <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#34d399]" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    {f}
+                  </li>
+                ))}
               </ul>
-              <Link
-                href="/register"
-                className="block rounded-xl border border-white/15 py-2.5 text-center text-sm font-medium text-gray-300 transition hover:border-white/30 hover:text-white"
-              >
-                免费开始
-              </Link>
-            </Card>
+            </div>
 
-            {PLANS.map((plan) => (
-              <Card
-                key={plan.id}
-                className={`flex flex-col ${plan.highlight ? "border-violet-500/50 bg-violet-500/10" : ""}`}
-              >
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-sm text-gray-400">{plan.name}</span>
-                  {plan.highlight && (
-                    <span className="rounded-full bg-violet-500 px-2 py-0.5 text-xs font-medium text-white">
-                      推荐
-                    </span>
-                  )}
-                </div>
-                <div className="mb-1 flex items-end gap-1">
-                  <span className="text-3xl font-bold text-white">¥{plan.price}</span>
-                  <span className="mb-1 text-sm text-gray-500">{plan.unit}</span>
-                </div>
-                {plan.perMonth && (
-                  <div className="mb-1 text-xs text-gray-500">{plan.perMonth}</div>
-                )}
-                <div className="mb-6 text-xs text-gray-500">{plan.desc}</div>
-                <ul className="mb-8 flex-1 space-y-2 text-sm text-gray-400">
-                  <li className="flex items-center gap-2"><span className="text-green-400">✓</span> 全部真题无限刷</li>
-                  <li className="flex items-center gap-2"><span className="text-green-400">✓</span> AI 老师无限对话</li>
-                  <li className="flex items-center gap-2"><span className="text-green-400">✓</span> 全部变形题解锁</li>
-                  <li className="flex items-center gap-2"><span className="text-green-400">✓</span> 错题本 + AI 错因分析</li>
-                </ul>
-                <Link
-                  href="/register"
-                  className={`block rounded-xl py-2.5 text-center text-sm font-medium transition ${
-                    plan.highlight
-                      ? "bg-violet-600 text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500"
-                      : "border border-white/15 text-gray-300 hover:border-white/30 hover:text-white"
-                  }`}
-                >
-                  立即订阅
-                </Link>
-              </Card>
-            ))}
+            <Link
+              href={REGISTER_URL}
+              className="mt-6 inline-block w-full rounded-xl bg-[#1d5bd6] py-3 text-sm font-semibold text-white transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-lg"
+            >
+              立即开始
+            </Link>
+          </div>
+
+          {/* 免费提示 */}
+          <div className="mt-4 rounded-lg border border-[#1d5bd6]/15 bg-[#1d5bd6]/5 px-4 py-3 text-center text-sm text-[#1d5bd6]">
+            <span className="mr-1">🎁</span>
+            免费体验：1 道完整真题，包含 AI 老师对话、变形题、错因分析。先试，再决定。
           </div>
         </div>
       </section>
 
-      {/* ── 最终 CTA ─────────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden px-6 py-32 text-center">
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-600/15 blur-[100px]" />
-        <div className="relative z-10 mx-auto max-w-2xl">
-          <h2 className="text-3xl font-bold md:text-5xl">
-            现在开始，<GradientText>真正掌握算法</GradientText>
+      {/* ── 第六屏 最终 CTA ─────────────────────────────────────────────── */}
+      <section className="bg-[#0c1524] px-6 py-24 md:py-32 text-center">
+        <div className="mx-auto max-w-lg">
+          <h2 className="text-2xl font-bold text-white sm:text-3xl md:text-4xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+            下次孩子卡住的时候
+            <br />
+            <span className="text-[#4a7fe8]">让他试试问 AI 老师</span>
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-gray-400">
-            免费体验 1 道完整题目，包括 AI 老师和变形题
+          <p className="mt-4 text-gray-400">
+            免费体验一道完整题目，感受 AI 引导式教学的效果
           </p>
           <Link
-            href="/register"
-            className="mt-8 inline-block rounded-xl bg-violet-600 px-10 py-4 text-base font-semibold text-white shadow-xl shadow-violet-600/30 transition hover:bg-violet-500"
+            href={REGISTER_URL}
+            className="mt-8 inline-block rounded-xl border-2 border-white bg-transparent px-8 py-3.5 text-base font-semibold text-white transition hover:bg-white hover:text-[#0c1524] hover:-translate-y-0.5"
           >
             免费开始体验
           </Link>
         </div>
       </section>
 
-      {/* ── Footer ───────────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/5 px-6 py-8 text-center text-sm text-gray-600">
-        <div className="mb-2 font-medium text-gray-500">
-          <GradientText>GESP.AI</GradientText>
-        </div>
-        <div className="flex justify-center gap-6">
-          <Link href="/login" className="hover:text-gray-400">登录</Link>
-          <Link href="/register" className="hover:text-gray-400">注册</Link>
-          <Link href="/problems" className="hover:text-gray-400">题库</Link>
-        </div>
+      {/* ── Footer ──────────────────────────────────────────────────────── */}
+      <footer className="border-t border-[#e8e4db] bg-[#f7f5f0] px-6 py-8 text-center">
+        <span className="text-lg font-bold text-[#1d5bd6]" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+          GESP.AI
+        </span>
+        <p className="mt-1 text-xs text-[#aaa]">
+          专为 GESP 备考设计的 AI 学习平台 · gesp.ai
+        </p>
       </footer>
     </div>
   );
