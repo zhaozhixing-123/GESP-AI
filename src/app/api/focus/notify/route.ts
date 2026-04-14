@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { username: true, feishuWebhook: true },
+      select: { nickname: true, feishuWebhook: true },
     });
 
     if (!user?.feishuWebhook) {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       minute: "2-digit",
     });
 
-    const text = `[GESP.AI 专注提醒]\n学生：${user.username}\n本次专注：${focusMinutes}分钟 | 分心：${distractMinutes}分钟\n时间：${now}`;
+    const text = `[GESP.AI 专注提醒]\n学生：${user.nickname}\n本次专注：${focusMinutes}分钟 | 分心：${distractMinutes}分钟\n时间：${now}`;
 
     const res = await fetch(user.feishuWebhook, {
       method: "POST",

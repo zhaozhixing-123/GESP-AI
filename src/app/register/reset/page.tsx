@@ -4,29 +4,24 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-type Step = "email" | "info";
+type Step = "email" | "reset";
 
-export default function RegisterPage() {
+export default function ResetPasswordPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("email");
 
-  // 第一步
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
-  // 第二步
-  const [nickname, setNickname] = useState("");
-  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [targetLevel, setTargetLevel] = useState("");
-  const [examDate, setExamDate] = useState("");
-  const [phone, setPhone] = useState("");
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   async function handleSendCode() {
     setError("");
@@ -37,7 +32,7 @@ export default function RegisterPage() {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "register" }),
+        body: JSON.stringify({ email, type: "reset_password" }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "发送失败"); return; }
@@ -59,48 +54,35 @@ export default function RegisterPage() {
 
   function handleNextStep() {
     setError("");
-    if (!email) { setError("请输入邮箱"); return; }
     if (!code || code.length !== 6) { setError("请输入 6 位验证码"); return; }
-    setStep("info");
+    setStep("reset");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
-    if (password !== confirmPassword) {
+    if (newPassword !== confirmPassword) {
       setError("两次密码输入不一致");
       return;
     }
 
     setLoading(true);
-
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          code,
-          nickname,
-          password,
-          targetLevel: parseInt(targetLevel),
-          examDate,
-          phone: phone || undefined,
-        }),
+        body: JSON.stringify({ email, code, newPassword }),
       });
-
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "注册失败");
+        setError(data.error || "重置失败");
         if (data.error?.includes("验证码")) setStep("email");
         return;
       }
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      router.push("/problems?welcome=1");
+      setSuccess(true);
     } catch {
       setError("网络错误，请重试");
     } finally {
@@ -108,11 +90,29 @@ export default function RegisterPage() {
     }
   }
 
+  if (success) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md text-center">
+          <div className="mb-4 text-4xl">✓</div>
+          <h2 className="mb-2 text-lg font-bold text-gray-900">密码重置成功</h2>
+          <p className="mb-6 text-sm text-gray-500">请使用新密码登录</p>
+          <Link
+            href="/login"
+            className="inline-block w-full rounded-md bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            去登录
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 py-8">
       <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md">
-        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">GESP.AI</h1>
-        <p className="mb-6 text-center text-sm text-gray-500">创建新账号</p>
+        <h1 className="mb-2 text-center text-2xl font-bold text-gray-900">重置密码</h1>
+        <p className="mb-6 text-center text-sm text-gray-500">通过邮箱验证码重置密码</p>
 
         {step === "email" && (
           <div className="space-y-4">
@@ -124,7 +124,7 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="block flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="请输入邮箱"
+                  placeholder="请输入注册邮箱"
                 />
                 <button
                   type="button"
@@ -164,33 +164,18 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {step === "info" && (
+        {step === "reset" && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">
               邮箱：{email}
-              <button type="button" onClick={() => setStep("email")} className="ml-2 text-blue-500 hover:underline text-xs">
-                修改
-              </button>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">昵称</label>
-              <input
-                type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="2-20 个字符"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">密码</label>
+              <label className="block text-sm font-medium text-gray-700">新密码</label>
               <input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="至少 6 个字符，含字母和数字"
                 required
@@ -198,57 +183,14 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">确认密码</label>
+              <label className="block text-sm font-medium text-gray-700">确认新密码</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="再次输入密码"
+                placeholder="再次输入新密码"
                 required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                目标考试级别 <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={targetLevel}
-                onChange={(e) => setTargetLevel(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                required
-              >
-                <option value="">请选择级别</option>
-                {[3, 4, 5, 6, 7, 8].map((l) => (
-                  <option key={l} value={l}>{l} 级</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                目标考试日期 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={examDate}
-                onChange={(e) => setExamDate(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                手机号 <span className="text-gray-400 font-normal">（选填）</span>
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="用于接收重要通知"
               />
             </div>
 
@@ -259,15 +201,14 @@ export default function RegisterPage() {
               disabled={loading}
               className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "注册中..." : "注册"}
+              {loading ? "重置中..." : "重置密码"}
             </button>
           </form>
         )}
 
         <p className="mt-4 text-center text-sm text-gray-500">
-          已有账号？{" "}
           <Link href="/login" className="text-blue-600 hover:underline">
-            登录
+            返回登录
           </Link>
         </p>
       </div>

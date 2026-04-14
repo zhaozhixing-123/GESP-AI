@@ -17,30 +17,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { username, password, targetLevel, examDate, phone } =
+    const { email, code, nickname, password, targetLevel, examDate, phone } =
       await request.json();
 
-    if (!username || !password) {
-      return Response.json({ error: "用户名和密码不能为空" }, { status: 400 });
+    if (!email || !code || !nickname || !password) {
+      return Response.json({ error: "必填项不能为空" }, { status: 400 });
     }
-    if (username.length < 2 || username.length > 20) {
+
+    // 邮箱格式校验
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return Response.json({ error: "邮箱格式不正确" }, { status: 400 });
+    }
+
+    // 昵称校验
+    if (nickname.length < 2 || nickname.length > 20) {
       return Response.json(
-        { error: "用户名长度需要在 2-20 个字符之间" },
+        { error: "昵称长度需要在 2-20 个字符之间" },
         { status: 400 }
       );
     }
-    if (!/^[a-zA-Z0-9\u4e00-\u9fa5_-]+$/.test(username)) {
+    if (!/^[a-zA-Z0-9\u4e00-\u9fa5_-]+$/.test(nickname)) {
       return Response.json(
-        { error: "用户名只能包含字母、数字、中文、下划线和横线" },
+        { error: "昵称只能包含字母、数字、中文、下划线和横线" },
         { status: 400 }
       );
     }
+
+    // 密码校验
     if (password.length < 6) {
       return Response.json({ error: "密码长度至少 6 个字符" }, { status: 400 });
     }
     if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
       return Response.json({ error: "密码需要同时包含字母和数字" }, { status: 400 });
     }
+
     if (!targetLevel || targetLevel < 3 || targetLevel > 8) {
       return Response.json(
         { error: "请选择目标考试级别（3-8 级）" },
@@ -51,9 +61,32 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "请选择目标考试日期" }, { status: 400 });
     }
 
-    const existing = await prisma.user.findUnique({ where: { username } });
+    // 校验邮箱验证码
+    const record = await prisma.verificationCode.findFirst({
+      where: {
+        email,
+        code,
+        type: "register",
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!record) {
+      return Response.json({ error: "验证码无效或已过期" }, { status: 400 });
+    }
+
+    // 标记验证码已使用
+    await prisma.verificationCode.update({
+      where: { id: record.id },
+      data: { used: true },
+    });
+
+    // 检查邮箱是否已注册
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return Response.json({ error: "用户名已存在" }, { status: 409 });
+      return Response.json({ error: "该邮箱已注册" }, { status: 409 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -66,7 +99,9 @@ export async function POST(request: NextRequest) {
 
       return tx.user.create({
         data: {
-          username,
+          email,
+          emailVerified: true,
+          nickname,
           passwordHash,
           role,
           targetLevel: parseInt(String(targetLevel)),
@@ -80,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     const token = signToken({
       userId: user.id,
-      username: user.username,
+      email: user.email,
       role: user.role,
     });
 
@@ -88,7 +123,8 @@ export async function POST(request: NextRequest) {
       token,
       user: {
         id: user.id,
-        username: user.username,
+        email: user.email,
+        nickname: user.nickname,
         role: user.role,
         plan: user.plan,
         planExpireAt: user.planExpireAt,

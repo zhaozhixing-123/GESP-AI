@@ -10,7 +10,7 @@ export function getJwtSecret(): string {
 
 export interface JwtPayload {
   userId: number;
-  username: string;
+  email: string;
   role: string;
 }
 

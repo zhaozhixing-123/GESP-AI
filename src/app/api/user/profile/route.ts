@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
     where: { id: auth.userId },
     select: {
       id: true,
-      username: true,
+      email: true,
+      nickname: true,
       role: true,
       plan: true,
       planExpireAt: true,
@@ -46,6 +47,10 @@ export async function PATCH(request: NextRequest) {
 
   // 只允许更新这些字段
   const data: Record<string, unknown> = {};
+  if (body.nickname !== undefined) {
+    const nick = String(body.nickname).trim();
+    if (nick.length >= 2 && nick.length <= 20) data.nickname = nick;
+  }
   if (body.phone !== undefined) data.phone = body.phone || null;
   if (body.targetLevel !== undefined)
     data.targetLevel = body.targetLevel ? parseInt(body.targetLevel) : null;
@@ -55,7 +60,7 @@ export async function PATCH(request: NextRequest) {
   const updated = await prisma.user.update({
     where: { id: auth.userId },
     data,
-    select: { phone: true, targetLevel: true, examDate: true },
+    select: { nickname: true, phone: true, targetLevel: true, examDate: true },
   });
 
   return Response.json({ user: updated });

@@ -5,7 +5,8 @@ import Navbar from "@/components/Navbar";
 
 interface UserRow {
   id: number;
-  username: string;
+  email: string;
+  nickname: string;
   role: string;
   plan: string;
   planExpireAt: string | null;
@@ -83,7 +84,8 @@ export default function AdminUsersPage() {
   }
 
   const filtered = users.filter((u) =>
-    u.username.toLowerCase().includes(search.toLowerCase())
+    u.nickname.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -94,7 +96,7 @@ export default function AdminUsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">用户管理</h1>
           <input
             type="text"
-            placeholder="搜索用户名..."
+            placeholder="搜索昵称或邮箱..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -114,7 +116,8 @@ export default function AdminUsersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-gray-500">
-                  <th className="px-4 py-3 font-medium">用户名</th>
+                  <th className="px-4 py-3 font-medium">昵称</th>
+                  <th className="px-4 py-3 font-medium">邮箱</th>
                   <th className="px-4 py-3 font-medium">角色</th>
                   <th className="px-4 py-3 font-medium">套餐</th>
                   <th className="px-4 py-3 font-medium">到期时间</th>
@@ -128,7 +131,10 @@ export default function AdminUsersPage() {
                 {filtered.map((u) => (
                   <tr key={u.id} className="border-b last:border-b-0 hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium text-gray-900">
-                      {u.username}
+                      {u.nickname}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      {u.email}
                     </td>
                     <td className="px-4 py-3">
                       {u.role === "admin" ? (
@@ -198,7 +204,7 @@ export default function AdminUsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
             <h2 className="mb-4 text-base font-bold text-gray-900">
-              设置订阅 — {editingUser.username}
+              设置订阅 — {editingUser.nickname}
             </h2>
 
             <div className="space-y-4">

@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const [dbUser, sub] = await Promise.all([
     prisma.user.findUnique({
       where: { id: jwtUser.userId },
-      select: { id: true, username: true, role: true, plan: true, planExpireAt: true },
+      select: { id: true, email: true, nickname: true, role: true, plan: true, planExpireAt: true },
     }),
     getSubscriptionInfo(jwtUser.userId),
   ]);
@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
   return Response.json({
     user: {
       id: dbUser.id,
-      username: dbUser.username,
+      email: dbUser.email,
+      nickname: dbUser.nickname,
       role: dbUser.role,
       plan: dbUser.plan,
       planExpireAt: dbUser.planExpireAt,

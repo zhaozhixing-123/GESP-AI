@@ -16,7 +16,8 @@ const LEVEL_OPTIONS = [3, 4, 5, 6, 7, 8];
 
 interface ProfileData {
   id: number;
-  username: string;
+  email: string;
+  nickname: string;
   role: string;
   plan: string;
   planExpireAt: string | null;
@@ -36,6 +37,7 @@ export default function ProfilePage() {
 
   // edit state
   const [editing, setEditing] = useState(false);
+  const [editNickname, setEditNickname] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editLevel, setEditLevel] = useState("");
   const [editExamDate, setEditExamDate] = useState("");
@@ -55,6 +57,7 @@ export default function ProfilePage() {
       .then((data) => {
         if (data?.user) {
           setProfile(data.user);
+          setEditNickname(data.user.nickname ?? "");
           setEditPhone(data.user.phone ?? "");
           setEditLevel(data.user.targetLevel ? String(data.user.targetLevel) : "");
           setEditExamDate(
@@ -75,6 +78,7 @@ export default function ProfilePage() {
       method: "PATCH",
       headers,
       body: JSON.stringify({
+        nickname: editNickname,
         phone: editPhone,
         targetLevel: editLevel,
         examDate: editExamDate,
@@ -157,8 +161,12 @@ export default function ProfilePage() {
           <h2 className="mb-4 text-base font-semibold text-gray-700">账户信息</h2>
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-gray-500">用户名</span>
-              <span className="font-medium text-gray-900">{profile.username}</span>
+              <span className="text-gray-500">邮箱</span>
+              <span className="font-medium text-gray-900">{profile.email}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500">昵称</span>
+              <span className="font-medium text-gray-900">{profile.nickname}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-500">注册时间</span>
@@ -218,6 +226,18 @@ export default function ProfilePage() {
 
           {editing ? (
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  昵称
+                </label>
+                <input
+                  type="text"
+                  value={editNickname}
+                  onChange={(e) => setEditNickname(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="2-20 个字符"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   目标级别

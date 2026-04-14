@@ -7,7 +7,7 @@ import { useFocusTime } from "./FocusTracker";
 
 interface User {
   id: number;
-  username: string;
+  nickname: string;
   role: string;
   plan?: string;
   planExpireAt?: string | null;
@@ -159,7 +159,7 @@ export default function Navbar() {
               {renderSubscriptionBadge()}
 
               <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
-                {user.username}
+                {user.nickname}
                 {user.role === "admin" && (
                   <span className="ml-1 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
                     管理员

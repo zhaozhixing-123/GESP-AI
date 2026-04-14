@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { isValidWebhookUrl } from "@/lib/webhook";
 
 // POST: 测试飞书 Webhook
@@ -18,7 +19,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const text = `[GESP.AI 测试消息]\n飞书 Webhook 配置成功！\n学生：${user.username}\n这是一条测试消息，确认通知功能正常。`;
+    const dbUser = await prisma.user.findUnique({ where: { id: user.userId }, select: { nickname: true } });
+    const displayName = dbUser?.nickname || user.email;
+    const text = `[GESP.AI 测试消息]\n飞书 Webhook 配置成功！\n学生：${displayName}\n这是一条测试消息，确认通知功能正常。`;
 
     const res = await fetch(webhookUrl, {
       method: "POST",

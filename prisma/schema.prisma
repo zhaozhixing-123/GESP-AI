@@ -9,7 +9,9 @@ datasource db {
 
 model User {
   id                  Int                  @id @default(autoincrement())
-  username            String               @unique
+  email               String               @unique       // 登录标识
+  emailVerified       Boolean              @default(false)
+  nickname            String                             // 展示昵称
   passwordHash        String
   role                String               @default("user") // admin | user
   createdAt           DateTime             @default(now())
@@ -190,4 +192,18 @@ model VariantSubmission {
   user              User               @relation(fields: [userId], references: [id])
   variant           VariantProblem     @relation(fields: [variantId], references: [id])
   wrongBookAnalyses WrongBookAnalysis[]
+}
+
+// ───── 邮箱验证码 ─────
+
+model VerificationCode {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code      String                  // 6 位数字验证码
+  type      String                  // register | reset_password
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, type])
 }

@@ -17,25 +17,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { username, password } = await request.json();
+    const { email, password } = await request.json();
 
-    if (!username || !password) {
-      return Response.json({ error: "用户名和密码不能为空" }, { status: 400 });
+    if (!email || !password) {
+      return Response.json({ error: "邮箱和密码不能为空" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { username } });
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      return Response.json({ error: "用户名或密码错误" }, { status: 401 });
+      return Response.json({ error: "邮箱或密码错误" }, { status: 401 });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      return Response.json({ error: "用户名或密码错误" }, { status: 401 });
+      return Response.json({ error: "邮箱或密码错误" }, { status: 401 });
     }
 
     const token = signToken({
       userId: user.id,
-      username: user.username,
+      email: user.email,
       role: user.role,
     });
 
@@ -43,7 +43,8 @@ export async function POST(request: NextRequest) {
       token,
       user: {
         id: user.id,
-        username: user.username,
+        email: user.email,
+        nickname: user.nickname,
         role: user.role,
         plan: user.plan,
         planExpireAt: user.planExpireAt,
