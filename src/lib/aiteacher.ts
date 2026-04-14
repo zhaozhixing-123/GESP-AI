@@ -159,7 +159,7 @@ async function buildChatSystemPrompt(
 
   return substituteVariables(template, {
     problem_title: problem.title,
-    problem_description: problem.description.slice(0, 2000),
+    problem_description: problem.description,
     input_format: problem.inputFormat,
     output_format: problem.outputFormat,
   });
@@ -209,7 +209,7 @@ async function buildWrongbookSystemParts(
   // 动态部分：题目信息 + 学生代码
   const dynamicContext = substituteVariables(WRONGBOOK_DYNAMIC_TEMPLATE, {
     problem_title:       problem.title,
-    problem_description: problem.description.slice(0, 2000),
+    problem_description: problem.description,
     input_format:        problem.inputFormat,
     output_format:       problem.outputFormat,
     wrong_code_section:  `学生提交的代码（存在错误）：\n\`\`\`cpp\n${code}\n\`\`\``,
@@ -485,7 +485,7 @@ export async function streamExamReview(
       const sampleInfo = p.code?.trim()
         ? `样例通过：${p.samplesPassed}/${p.samplesTotal}`
         : "未作答";
-      return `### 第 ${i + 1} 题：${p.title}\n\n题目描述（摘要）：${p.description.slice(0, 400)}\n\n学生代码：\n${codeBlock}\n\n${sampleInfo}`;
+      return `### 第 ${i + 1} 题：${p.title}\n\n题目描述（摘要）：${p.description}\n\n学生代码：\n${codeBlock}\n\n${sampleInfo}`;
     })
     .join("\n\n---\n\n");
 
