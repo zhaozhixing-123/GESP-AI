@@ -1,8 +1,15 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "GESP.AI <noreply@gesp.ai>";
+/** 懒初始化 Resend client，避免构建期缺少环境变量报错 */
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) throw new Error("RESEND_API_KEY 环境变量未配置");
+    _resend = new Resend(key);
+  }
+  return _resend;
+}
 
 /** 生成 6 位数字验证码 */
 export function generateCode(): string {
@@ -32,8 +39,9 @@ export async function sendVerificationEmail(
     </div>
   `;
 
-  const { error } = await resend.emails.send({
-    from: FROM_EMAIL,
+  const fromEmail = process.env.RESEND_FROM_EMAIL || "GESP.AI <noreply@gesp.ai>";
+  const { error } = await getResend().emails.send({
+    from: fromEmail,
     to: email,
     subject,
     html,
