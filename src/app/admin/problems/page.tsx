@@ -417,6 +417,50 @@ export default function AdminProblemsPage() {
     fetchVariantSummary();
   }
 
+  // --- 复核变形题样例/测试点 ---
+  const [batchVariantVerifyRunning, setBatchVariantVerifyRunning] = useState(false);
+  const [batchVariantVerifyLevel, setBatchVariantVerifyLevel] = useState<string>("all");
+  const [batchVariantVerifyProgress, setBatchVariantVerifyProgress] = useState("");
+  const [batchVariantVerifyResults, setBatchVariantVerifyResults] = useState<Array<{ title: string; status: string; msg: string }>>([]);
+
+  async function handleBatchVerifyVariants() {
+    if (batchVariantVerifyRunning) return;
+    const levelLabel = batchVariantVerifyLevel === "all" ? "所有级别" : `${batchVariantVerifyLevel} 级`;
+    if (!confirm(`用 Opus 复核【${levelLabel}】所有变形题的样例和测试点？每道约需 2-3 分钟。`)) return;
+    setBatchVariantVerifyRunning(true);
+    setBatchVariantVerifyResults([]);
+    setBatchVariantVerifyProgress("启动变形题复核...");
+    try {
+      const levelQuery = batchVariantVerifyLevel !== "all" ? `&level=${batchVariantVerifyLevel}` : "";
+      const res = await fetch(`/api/admin/variants/verify?batch=1${levelQuery}`, { method: "POST", headers, body: "{}" });
+      if (!res.body) throw new Error("no stream");
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            setBatchVariantVerifyProgress(data.message ?? "");
+            if (data.step === "result") {
+              setBatchVariantVerifyResults((prev) => [...prev, {
+                title: data.title ?? `v${data.variantId}`,
+                status: data.status,
+                msg: data.message,
+              }]);
+            }
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      setBatchVariantVerifyProgress("网络错误: " + (e as any).message);
+    }
+    setBatchVariantVerifyRunning(false);
+    fetchVariantSummary();
+  }
+
   // --- 复核测试数据 ---
   const [verifying, setVerifying] = useState<number | null>(null);
   const [verifyMsg, setVerifyMsg] = useState("");
@@ -841,6 +885,55 @@ export default function AdminProblemsPage() {
                     <div key={i} className="flex items-center justify-between text-xs">
                       <span className="truncate text-gray-700">{r.title}</span>
                       <span className={r.ok ? "text-amber-600" : "text-red-600"}>{r.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 批量复核变形题 */}
+            <div className="mb-4 rounded-lg bg-white p-4 shadow">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">批量复核变形题</span>
+                <select
+                  value={batchVariantVerifyLevel}
+                  onChange={(e) => setBatchVariantVerifyLevel(e.target.value)}
+                  disabled={batchVariantVerifyRunning}
+                  className="rounded-md border px-2 py-1 text-sm text-gray-700 focus:border-teal-500 focus:outline-none disabled:opacity-50"
+                >
+                  <option value="all">全部级别</option>
+                  {[1,2,3,4,5,6,7,8].map((l) => (
+                    <option key={l} value={l}>{l} 级</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBatchVerifyVariants}
+                  disabled={batchVariantVerifyRunning || batchVariantRunning || variantGenRunning !== null}
+                  className="rounded-md bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {batchVariantVerifyRunning ? "复核中..." : "开始复核"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">用 Opus 验证所有变形题的样例输出和测试点正确性，发现错误自动修复</p>
+
+              {batchVariantVerifyProgress && (
+                <div className={`mt-3 text-sm ${batchVariantVerifyRunning ? "text-yellow-700" : "text-teal-700"}`}>
+                  {batchVariantVerifyProgress}
+                </div>
+              )}
+
+              {batchVariantVerifyResults.length > 0 && (
+                <div className="mt-3 max-h-40 space-y-1 overflow-auto">
+                  {batchVariantVerifyResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate text-gray-700">{r.title}</span>
+                      <span className={
+                        r.status === "pass" ? "text-green-600" :
+                        r.status === "fixed" ? "text-amber-600" :
+                        "text-red-600"
+                      }>
+                        {r.status === "pass" ? "✓ 通过" : r.status === "fixed" ? "⚡ 已修复" : "✗ 需检查"} {r.msg}
+                      </span>
                     </div>
                   ))}
                 </div>
