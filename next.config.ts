@@ -19,7 +19,7 @@ const securityHeaders = [
       "default-src 'self'",
       "img-src 'self' data: https:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
       "connect-src 'self' https://api.anthropic.com",
       "frame-ancestors 'none'",
     ].join("; "),
