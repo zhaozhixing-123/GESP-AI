@@ -133,6 +133,9 @@ export default function Navbar() {
           </Link>
           {user?.role === "admin" && (
             <>
+              <Link href="/admin/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
+                数据看板
+              </Link>
               <Link href="/admin/problems" className="text-sm text-gray-600 hover:text-gray-900">
                 题目管理
               </Link>
