@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
       minute: "2-digit",
     });
 
-    const text = `[GESP.AI 专注提醒]\n学生：${user.nickname}\n本次专注：${focusMinutes}分钟 | 分心：${distractMinutes}分钟\n时间：${now}`;
+    // 清理昵称中可能的特殊字符（防止存量脏数据）
+    const safeNickname = (user.nickname || "").replace(/[<>{}\[\]]/g, "");
+    const text = `[GESP.AI 专注提醒]\n学生：${safeNickname}\n本次专注：${focusMinutes}分钟 | 分心：${distractMinutes}分钟\n时间：${now}`;
 
     const res = await fetch(user.feishuWebhook, {
       method: "POST",

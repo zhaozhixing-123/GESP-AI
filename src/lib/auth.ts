@@ -20,7 +20,9 @@ export function signToken(payload: JwtPayload): string {
 
 export function verifyToken(token: string): JwtPayload | null {
   try {
-    return jwt.verify(token, getJwtSecret()) as JwtPayload;
+    const p = jwt.verify(token, getJwtSecret()) as any;
+    if (p.type === "parent") return null; // parent token 不能当用户 token 用
+    return p as JwtPayload;
   } catch {
     return null;
   }

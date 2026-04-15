@@ -36,21 +36,26 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "验证码已发送，请 60 秒后再试" }, { status: 429 });
     }
 
-    // 注册时检查邮箱是否已存在
+    // 注册时检查邮箱是否已存在（静默返回，防止邮箱枚举）
     if (type === "register") {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) {
-        return Response.json({ error: "该邮箱已注册" }, { status: 409 });
+        return Response.json({ message: "验证码已发送" });
       }
     }
 
-    // 重置密码时检查邮箱是否存在
+    // 重置密码时检查邮箱是否存在（静默返回，防止邮箱枚举）
     if (type === "reset_password") {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (!existing) {
-        return Response.json({ error: "该邮箱未注册" }, { status: 404 });
+        return Response.json({ message: "验证码已发送" });
       }
     }
+
+    // 清理该邮箱+类型的旧未使用验证码，确保同一时间只有一条有效
+    await prisma.verificationCode.deleteMany({
+      where: { email, type, used: false },
+    });
 
     // 生成验证码并存库
     const code = generateCode();

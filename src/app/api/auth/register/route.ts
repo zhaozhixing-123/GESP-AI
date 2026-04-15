@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "请选择目标考试日期" }, { status: 400 });
     }
 
-    // 校验邮箱验证码
-    const record = await prisma.verificationCode.findFirst({
+    // 校验邮箱验证码（原子操作：匹配+标记已使用一步完成）
+    const upd = await prisma.verificationCode.updateMany({
       where: {
         email,
         code,
@@ -70,47 +70,39 @@ export async function POST(request: NextRequest) {
         used: false,
         expiresAt: { gt: new Date() },
       },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!record) {
-      return Response.json({ error: "验证码无效或已过期" }, { status: 400 });
-    }
-
-    // 标记验证码已使用
-    await prisma.verificationCode.update({
-      where: { id: record.id },
       data: { used: true },
     });
 
-    // 检查邮箱是否已注册
+    if (upd.count === 0) {
+      return Response.json({ error: "验证码无效或已过期" }, { status: 400 });
+    }
+
+    // 检查邮箱是否已注册（返回通用错误，防止邮箱枚举）
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return Response.json({ error: "该邮箱已注册" }, { status: 409 });
+      return Response.json({ error: "验证码无效或已过期" }, { status: 400 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 使用事务防止首个用户 admin 分配的竞态条件
-    const user = await prisma.$transaction(async (tx) => {
-      const userCount = await tx.user.count();
-      const isFirstUser = userCount === 0;
-      const role = isFirstUser ? "admin" : "user";
+    // Admin 由环境变量 INITIAL_ADMIN_EMAIL 指定，而非自动授予首个注册用户
+    const ADMIN_EMAIL = process.env.INITIAL_ADMIN_EMAIL;
+    const isAdmin = !!ADMIN_EMAIL && email === ADMIN_EMAIL;
+    const role = isAdmin ? "admin" : "user";
 
-      return tx.user.create({
-        data: {
-          email,
-          emailVerified: true,
-          nickname,
-          passwordHash,
-          role,
-          targetLevel: parseInt(String(targetLevel)),
-          examDate: new Date(examDate),
-          phone: phone?.trim() || null,
-          plan: isFirstUser ? "yearly" : "free",
-          planExpireAt: isFirstUser ? new Date("2099-12-31") : null,
-        },
-      });
+    const user = await prisma.user.create({
+      data: {
+        email,
+        emailVerified: true,
+        nickname,
+        passwordHash,
+        role,
+        targetLevel: parseInt(String(targetLevel)),
+        examDate: new Date(examDate),
+        phone: phone?.trim() || null,
+        plan: isAdmin ? "yearly" : "free",
+        planExpireAt: isAdmin ? new Date("2099-12-31") : null,
+      },
     });
 
     const token = signToken({

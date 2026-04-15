@@ -39,12 +39,15 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "题目不存在" }, { status: 404 });
     }
 
-    const samples: Array<{ input: string; output: string }> = JSON.parse(
-      problem.samples || "[]"
-    );
-    const extraTests: Array<{ input: string; output: string }> = JSON.parse(
-      problem.testCases || "[]"
-    );
+    let samples: Array<{ input: string; output: string }>;
+    let extraTests: Array<{ input: string; output: string }>;
+    try {
+      samples = JSON.parse(problem.samples || "[]");
+      extraTests = JSON.parse(problem.testCases || "[]");
+    } catch {
+      console.error(`[Submissions] 题目 ${problemId} 测试数据格式损坏`);
+      return Response.json({ error: "题目测试数据异常，请联系管理员" }, { status: 500 });
+    }
 
     // 合并样例 + 额外测试点
     const allTests = [...samples, ...extraTests];
@@ -109,6 +112,23 @@ export async function POST(request: NextRequest) {
       if (finalStatus !== "AC" && overallStatus === "AC") {
         overallStatus = finalStatus;
       }
+    }
+
+    // 每用户每题最多保留 50 条提交，超出 FIFO 删除
+    const MAX_PER_PROBLEM = 50;
+    const oldCount = await prisma.submission.count({
+      where: { userId: user.userId, problemId: parseInt(problemId) },
+    });
+    if (oldCount >= MAX_PER_PROBLEM) {
+      const toDelete = await prisma.submission.findMany({
+        where: { userId: user.userId, problemId: parseInt(problemId) },
+        orderBy: { createdAt: "asc" },
+        take: oldCount - MAX_PER_PROBLEM + 1,
+        select: { id: true },
+      });
+      await prisma.submission.deleteMany({
+        where: { id: { in: toDelete.map(s => s.id) } },
+      });
     }
 
     // 保存提交记录

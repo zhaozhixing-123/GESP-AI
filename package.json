@@ -9,7 +9,8 @@
     "db:deploy": "prisma migrate deploy",
     "start": "prisma migrate deploy && next start",
     "lint": "eslint",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

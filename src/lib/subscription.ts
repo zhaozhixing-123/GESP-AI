@@ -69,6 +69,21 @@ export async function checkFreeLimit(
  * - 订阅未过期 → 从原到期时间往后延
  * - 已过期或从未订阅 → 从现在开始
  */
+/**
+ * 安全地给日期加 N 个月，处理月末边界
+ * 例: 1/31 + 1 月 → 2/28（而非 3/3）
+ */
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  const day = result.getDate();
+  result.setMonth(result.getMonth() + months);
+  // 如果日期溢出到下个月（如 31→3），回退到该月最后一天
+  if (result.getDate() !== day) {
+    result.setDate(0); // 设为上个月最后一天
+  }
+  return result;
+}
+
 export function calculateExpireAt(
   currentExpireAt: Date | null,
   plan: string
@@ -80,14 +95,13 @@ export function calculateExpireAt(
 
   switch (plan) {
     case "monthly":
-      base.setMonth(base.getMonth() + 1);
-      break;
+      return addMonths(base, 1);
     case "quarterly":
-      base.setMonth(base.getMonth() + 3);
-      break;
+      return addMonths(base, 3);
     case "yearly":
       base.setFullYear(base.getFullYear() + 1);
-      break;
+      return base;
+    default:
+      return base;
   }
-  return base;
 }

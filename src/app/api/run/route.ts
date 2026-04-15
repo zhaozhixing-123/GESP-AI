@@ -38,9 +38,13 @@ export async function POST(request: NextRequest) {
         select: { samples: true },
       });
 
-      const samples: Array<{ input: string; output: string }> = JSON.parse(
-        problem?.samples || "[]"
-      );
+      let samples: Array<{ input: string; output: string }>;
+      try {
+        samples = JSON.parse(problem?.samples || "[]");
+      } catch {
+        console.error(`[Run] 题目 ${problemId} 样例数据格式损坏`);
+        return Response.json({ error: "题目样例数据异常，请联系管理员" }, { status: 500 });
+      }
 
       if (samples.length === 0) {
         return Response.json({ error: "该题目暂无样例" }, { status: 400 });

@@ -28,11 +28,10 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "密码需要同时包含字母和数字" }, { status: 400 });
     }
 
-    // 校验验证码
+    // 校验验证码（原子操作：查找最新未作废的验证码）
     const record = await prisma.verificationCode.findFirst({
       where: {
         email,
-        code,
         type: "reset_password",
         used: false,
         expiresAt: { gt: new Date() },
@@ -44,11 +43,37 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "验证码无效或已过期" }, { status: 400 });
     }
 
-    // 标记验证码已使用
+    // 尝试次数 +1，超过 5 次强制作废
+    const newAttempts = record.attempts + 1;
+    await prisma.verificationCode.update({
+      where: { id: record.id },
+      data: {
+        attempts: { increment: 1 },
+        used: newAttempts >= 5 ? true : undefined,
+      },
+    });
+
+    if (record.code !== code) {
+      const msg = newAttempts >= 5
+        ? "验证码已失效，请重新获取"
+        : "验证码错误";
+      return Response.json({ error: msg }, { status: 400 });
+    }
+
+    // 验证码正确，标记已使用
     await prisma.verificationCode.update({
       where: { id: record.id },
       data: { used: true },
     });
+
+    // 检查新密码不能与旧密码相同
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { passwordHash: true },
+    });
+    if (user && await bcrypt.compare(newPassword, user.passwordHash)) {
+      return Response.json({ error: "新密码不能与旧密码相同" }, { status: 400 });
+    }
 
     // 更新密码
     const passwordHash = await bcrypt.hash(newPassword, 10);

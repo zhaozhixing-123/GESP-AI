@@ -9,27 +9,29 @@ interface RateLimitEntry {
 
 const stores = new Map<string, Map<string, RateLimitEntry>>();
 
-// 定期清理过期条目，防止内存泄漏
-const CLEANUP_INTERVAL = 60_000; // 1 分钟
-const cleanupTimers = new Map<string, ReturnType<typeof setInterval>>();
+// 惰性清理：记录上次清理时间，每 60s 在请求时顺便清理
+// （比 setInterval 更适合 serverless 环境，冷启动后不会失效）
+const CLEANUP_INTERVAL = 60_000;
+const lastCleanup = new Map<string, number>();
 
 function getStore(name: string): Map<string, RateLimitEntry> {
   let store = stores.get(name);
   if (!store) {
     store = new Map();
     stores.set(name, store);
-    // 启动定期清理
-    cleanupTimers.set(
-      name,
-      setInterval(() => {
-        const now = Date.now();
-        for (const [key, entry] of store!) {
-          entry.timestamps = entry.timestamps.filter((t) => now - t < 600_000);
-          if (entry.timestamps.length === 0) store!.delete(key);
-        }
-      }, CLEANUP_INTERVAL)
-    );
+    lastCleanup.set(name, Date.now());
   }
+
+  // 惰性清理：距上次清理超过 60s 时执行
+  const now = Date.now();
+  if (now - (lastCleanup.get(name) || 0) > CLEANUP_INTERVAL) {
+    lastCleanup.set(name, now);
+    for (const [key, entry] of store) {
+      entry.timestamps = entry.timestamps.filter((t) => now - t < 600_000);
+      if (entry.timestamps.length === 0) store.delete(key);
+    }
+  }
+
   return store;
 }
 
@@ -84,11 +86,18 @@ export function checkRateLimit(config: RateLimitConfig, key: string): RateLimitR
   };
 }
 
-/** 从 NextRequest 中提取客户端 IP */
+/**
+ * 从 NextRequest 中提取客户端 IP
+ * Railway 等反向代理会在 XFF 末尾追加真实 IP，
+ * 从尾部往前跳过 TRUSTED_PROXY_HOPS 个代理 hop 取到客户端 IP
+ */
+const TRUSTED_HOPS = parseInt(process.env.TRUSTED_PROXY_HOPS || "1");
+
 export function getClientIp(request: { headers: { get(name: string): string | null } }): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  const xff = request.headers.get("x-forwarded-for")?.split(",").map(s => s.trim()) || [];
+  if (xff.length > 0) {
+    const idx = Math.max(0, xff.length - 1 - TRUSTED_HOPS);
+    return xff[idx];
+  }
+  return request.headers.get("x-real-ip") || "unknown";
 }

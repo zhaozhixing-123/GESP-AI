@@ -203,6 +203,7 @@ model VerificationCode {
   type      String                  // register | reset_password
   expiresAt DateTime
   used      Boolean  @default(false)
+  attempts  Int      @default(0)    // 验证尝试次数，≥5 自动作废
   createdAt DateTime @default(now())
 
   @@index([email, type])

@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { fetchLuoguProblem, fetchLuoguProblemList } from "@/lib/luogu";
 
+function isValidLuoguUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && u.hostname === "www.luogu.com.cn";
+  } catch { return false; }
+}
+
 /** POST /api/admin/import — 单题或批量导入 */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request);
@@ -13,6 +20,9 @@ export async function POST(request: NextRequest) {
 
     // 批量导入模式：传入 luoguUrl（洛谷列表页链接）
     if (body.luoguUrl) {
+      if (!isValidLuoguUrl(body.luoguUrl)) {
+        return Response.json({ error: "仅支持 https://www.luogu.com.cn 的链接" }, { status: 400 });
+      }
       return handleBatchImport(body.luoguUrl, body.level);
     }
 
@@ -52,6 +62,14 @@ async function handleBatchImport(luoguUrl: string, manualLevel?: number) {
 
   if (pids.length === 0) {
     return Response.json({ error: "该链接没有找到题目" }, { status: 400 });
+  }
+
+  // 单次最多导入 20 题，防止 serverless 超时
+  if (pids.length > 20) {
+    return Response.json(
+      { error: `单次最多导入 20 题，当前共 ${pids.length} 题，请分批导入` },
+      { status: 400 }
+    );
   }
 
   // 查哪些已存在
