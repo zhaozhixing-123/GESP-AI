@@ -418,6 +418,43 @@ export default function AdminProblemsPage() {
   }
 
   // --- 复核变形题样例/测试点 ---
+  const [variantVerifying, setVariantVerifying] = useState<number | null>(null);
+  const [variantVerifyMsg, setVariantVerifyMsg] = useState("");
+
+  async function handleVerifyVariants(problemId: number) {
+    if (variantVerifying !== null || batchVariantVerifyRunning) return;
+    setVariantVerifying(problemId);
+    setVariantVerifyMsg("正在复核变形题...");
+    try {
+      const res = await fetch("/api/admin/variants/verify", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ problemId }),
+      });
+      if (!res.body) throw new Error("no stream");
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let lastMsg = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            lastMsg = data.message ?? lastMsg;
+            setVariantVerifyMsg(lastMsg);
+          } catch {}
+        }
+      }
+      setVariantVerifyMsg(lastMsg || "复核完成");
+    } catch (e: any) {
+      setVariantVerifyMsg("复核失败: " + e.message);
+    }
+    setVariantVerifying(null);
+    fetchVariantSummary();
+  }
+
   const [batchVariantVerifyRunning, setBatchVariantVerifyRunning] = useState(false);
   const [batchVariantVerifyLevel, setBatchVariantVerifyLevel] = useState<string>("all");
   const [batchVariantVerifyProgress, setBatchVariantVerifyProgress] = useState("");
@@ -1017,6 +1054,12 @@ export default function AdminProblemsPage() {
               </div>
             )}
 
+            {variantVerifyMsg && (
+              <div className={`mb-4 rounded-lg p-3 text-sm ${variantVerifyMsg.includes("失败") || variantVerifyMsg.includes("需检查") ? "bg-red-50 text-red-600" : variantVerifying ? "bg-yellow-50 text-yellow-700" : "bg-teal-50 text-teal-700"}`}>
+                {variantVerifyMsg}
+              </div>
+            )}
+
             {variantGenMsg && (
               <div className={`mb-4 rounded-lg p-3 text-sm ${variantGenMsg.includes("失败") || variantGenMsg.includes("错误") ? "bg-red-50 text-red-600" : variantGenRunning ? "bg-yellow-50 text-yellow-700" : "bg-amber-50 text-amber-700"}`}>
                 {variantGenMsg}
@@ -1116,6 +1159,16 @@ export default function AdminProblemsPage() {
                           >
                             {variantGenRunning === p.id ? "变形中..." : "变形题"}
                           </button>
+                          {(variantSummary[p.id]?.["ready"] ?? 0) > 0 && (
+                            <button
+                              onClick={() => handleVerifyVariants(p.id)}
+                              disabled={variantVerifying !== null || batchVariantVerifyRunning}
+                              title="复核该题所有变形题的样例和测试点"
+                              className="mr-2 text-teal-600 hover:underline disabled:opacity-50"
+                            >
+                              {variantVerifying === p.id ? "复核变形中..." : "复核变形"}
+                            </button>
+                          )}
                           <button onClick={() => openEdit(p.id)} className="mr-2 text-blue-600 hover:underline">编辑</button>
                           <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">删除</button>
                         </td>
