@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && node scripts/resolve-failed-migrations.js && prisma migrate deploy && next build",
+    "dev": "node scripts/copy-monaco.js && next dev",
+    "build": "prisma generate && node scripts/resolve-failed-migrations.js && prisma migrate deploy && node scripts/copy-monaco.js && next build",
     "postinstall": "prisma generate",
     "db:deploy": "prisma migrate deploy",
     "start": "prisma migrate deploy && next start",

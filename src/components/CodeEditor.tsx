@@ -3,10 +3,10 @@
 import { useRef, useCallback } from "react";
 import Editor, { loader } from "@monaco-editor/react";
 
-// 默认从 jsDelivr CDN 加载，国内无法访问，改用 npmmirror（阿里云）
+// 默认从 jsDelivr CDN 加载，国内无法访问，改用本地文件（构建时自动复制）
 loader.config({
   paths: {
-    vs: "https://registry.npmmirror.com/monaco-editor/0.55.1/files/min/vs",
+    vs: "/monaco-editor/min/vs",
   },
 });
 
