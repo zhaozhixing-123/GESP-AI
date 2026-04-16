@@ -152,15 +152,18 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 分屏检测：窗口宽度 < 屏幕 75%
+  // 分屏检测：窗口宽度 < 屏幕 75%（且页面可见且有焦点时才判断）
   const checkSplitScreen = useCallback(() => {
     if (typeof screen === "undefined") return;
+    if (document.hidden || !document.hasFocus()) return;
     const screenW = screen.availWidth;
     const windowW = window.outerWidth;
     if (screenW > 0 && windowW < screenW * SPLIT_SCREEN_RATIO) {
       markDistracted();
+    } else {
+      markFocused();
     }
-  }, [markDistracted]);
+  }, [markDistracted, markFocused]);
 
   const tick = useCallback(() => {
     const now = Date.now();
@@ -258,11 +261,9 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       }
     }
     function handleResize() {
-      const currentWidth = window.innerWidth;
-      if (currentWidth < lastWidth.current - 200) {
-        markDistracted();
-      }
-      lastWidth.current = currentWidth;
+      // resize 时不直接判断分心，交给每秒的 checkSplitScreen 统一处理
+      // 全屏切换会触发 resize 且瞬间宽度变化大，直接判断会误报
+      lastWidth.current = window.innerWidth;
     }
 
     // 页面关闭前保存 + 同步
