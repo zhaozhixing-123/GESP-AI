@@ -15,6 +15,7 @@ export default function ParentSettingsPage() {
 
   // 设置页状态
   const [webhook, setWebhook] = useState("");
+  const [thresholdMin, setThresholdMin] = useState(2);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -84,6 +85,7 @@ export default function ParentSettingsPage() {
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
         setWebhook(settings.feishuWebhook || "");
+        setThresholdMin(settings.notifyThresholdMin ?? 2);
       }
     } else {
       setError(data.error);
@@ -98,7 +100,7 @@ export default function ParentSettingsPage() {
     const res = await fetch("/api/parent", {
       method: "PUT",
       headers: { ...headers, "x-parent-token": parentToken },
-      body: JSON.stringify({ feishuWebhook: webhook }),
+      body: JSON.stringify({ feishuWebhook: webhook, notifyThresholdMin: thresholdMin }),
     });
     const data = await res.json();
     if (res.ok) setMessage("保存成功");
@@ -206,13 +208,32 @@ export default function ParentSettingsPage() {
             <div className="rounded-lg bg-white p-6 shadow">
               <h2 className="mb-2 text-lg font-semibold text-gray-900">飞书通知</h2>
               <p className="mb-4 text-sm text-gray-500">
-                配置飞书机器人 Webhook，孩子分心满 2 分钟时自动发送通知。
+                配置飞书机器人 Webhook，孩子分心时自动发送通知到飞书群。
               </p>
               <div className="mb-3">
                 <label className="mb-1 block text-sm font-medium text-gray-700">Webhook URL</label>
                 <input type="url" value={webhook} onChange={(e) => setWebhook(e.target.value)}
                   className="w-full rounded-md border px-3 py-2 text-sm font-mono"
                   placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." />
+              </div>
+              <div className="mb-3">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  分心多久后通知：<span className="font-bold text-blue-600">{thresholdMin} 分钟</span>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={15}
+                  value={thresholdMin}
+                  onChange={(e) => setThresholdMin(Number(e.target.value))}
+                  className="w-full accent-blue-600"
+                />
+                <div className="mt-1 flex justify-between text-xs text-gray-400">
+                  <span>1 分钟</span>
+                  <span>5 分钟</span>
+                  <span>10 分钟</span>
+                  <span>15 分钟</span>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={handleSave} disabled={saving}
@@ -224,13 +245,34 @@ export default function ParentSettingsPage() {
                   {testing ? "发送中..." : "发送测试消息"}
                 </button>
               </div>
-              <div className="mt-4 rounded bg-gray-50 p-3 text-xs text-gray-500">
-                <p className="mb-1 font-medium">如何获取飞书 Webhook：</p>
-                <ol className="list-inside list-decimal space-y-0.5">
-                  <li>在飞书中创建一个群（或使用已有群）</li>
-                  <li>群设置 → 群机器人 → 添加机器人 → 自定义机器人</li>
-                  <li>复制 Webhook 地址粘贴到上方</li>
+              <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4 text-xs text-gray-600 space-y-3">
+                <p className="font-medium text-gray-800">如何配置飞书通知（需在电脑端飞书操作，手机端不支持）：</p>
+                <ol className="list-inside list-decimal space-y-2 leading-relaxed">
+                  <li>
+                    打开 <span className="font-medium text-gray-800">电脑端飞书</span>，创建一个群聊（可以只拉自己一个人）
+                  </li>
+                  <li>
+                    点击群聊窗口右上角的 <span className="font-medium text-gray-800">「...」</span> 图标，在弹出菜单中点击 <span className="font-medium text-gray-800">「设置」</span>
+                  </li>
+                  <li>
+                    在设置页面滚动找到 <span className="font-medium text-gray-800">「群机器人」</span>，点击 <span className="font-medium text-gray-800">「添加机器人」</span>
+                  </li>
+                  <li>
+                    在机器人列表中找到并选择 <span className="font-medium text-gray-800">「自定义机器人」</span>（Custom Bot），给机器人取个名字，如 <span className="text-gray-800">"GESP 通知"</span>
+                  </li>
+                  <li>
+                    <span className="font-medium text-red-600">重要：</span>安全设置选择 <span className="font-medium text-gray-800">「自定义关键词」</span>，在输入框中填写 <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 font-mono font-medium text-blue-700">GESP</span>
+                  </li>
+                  <li>
+                    点击 <span className="font-medium text-gray-800">「完成」</span>，页面会显示一个 Webhook 地址（以 https://open.feishu.cn/ 开头），<span className="font-medium text-gray-800">复制整个地址</span>粘贴到上方输入框
+                  </li>
+                  <li>
+                    点击上方的 <span className="font-medium text-gray-800">「保存」</span>，然后点 <span className="font-medium text-gray-800">「发送测试消息」</span> 验证是否收到通知
+                  </li>
                 </ol>
+                <p className="rounded bg-amber-50 px-2 py-1.5 text-amber-700">
+                  注意：安全设置务必选「自定义关键词」并填写 GESP，否则消息会被飞书拦截无法送达。
+                </p>
               </div>
             </div>
 

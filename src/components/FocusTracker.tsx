@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 
-const NOTIFY_THRESHOLD = 2 * 60 * 1000; // 分心累计 2 分钟才通知
+const DEFAULT_THRESHOLD_MIN = 2;
 const STORAGE_KEY = "focus_data";
 const SAVE_INTERVAL = 5; // 每 5 秒存一次 localStorage
 
@@ -58,6 +58,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
   const distractTotal = useRef(0); // 本次会话的分心累计
   const notifiedThreshold = useRef(0);
   const lastWidth = useRef(typeof window !== "undefined" ? window.innerWidth : 0);
+  const thresholdMs = useRef(DEFAULT_THRESHOLD_MIN * 60 * 1000);
   const tickCount = useRef(0);
   const initialized = useRef(false);
 
@@ -118,9 +119,9 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       distractSeconds: Math.floor(totalDistractMs / 1000),
     });
 
-    // 分心累计每超过 2 分钟通知一次（基于总计）
-    if (totalDistractMs >= notifiedThreshold.current + NOTIFY_THRESHOLD) {
-      notifiedThreshold.current += NOTIFY_THRESHOLD;
+    // 分心累计每超过阈值通知一次（基于总计）
+    if (totalDistractMs >= notifiedThreshold.current + thresholdMs.current) {
+      notifiedThreshold.current += thresholdMs.current;
       sendNotify(totalFocusMs, totalDistractMs);
     }
 
@@ -148,6 +149,18 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       baseDistractMs.current = stored.distractMs;
       notifiedThreshold.current = stored.notifiedThreshold;
     }
+
+    // 从服务端获取家长设置的通知阈值
+    fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.user?.notifyThresholdMin) {
+          thresholdMs.current = data.user.notifyThresholdMin * 60 * 1000;
+        }
+      })
+      .catch(() => {});
 
     function handleVisibility() {
       if (document.hidden) markDistracted();

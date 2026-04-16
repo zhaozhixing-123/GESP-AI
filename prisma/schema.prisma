@@ -17,6 +17,7 @@ model User {
   createdAt           DateTime             @default(now())
   parentPassword      String?              // 家长密码（bcrypt hash）
   feishuWebhook       String?              // 飞书 Webhook URL
+  notifyThresholdMin  Int                  @default(2) // 分心多少分钟通知家长
   // 账户扩展字段
   phone               String?              // 手机号（选填）
   targetLevel         Int?                 // 目标考试级别 3-8

@@ -57,11 +57,12 @@ export async function GET(request: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: parent.userId },
-    select: { feishuWebhook: true },
+    select: { feishuWebhook: true, notifyThresholdMin: true },
   });
 
   return Response.json({
     feishuWebhook: user?.feishuWebhook || "",
+    notifyThresholdMin: user?.notifyThresholdMin ?? 2,
   });
 }
 
@@ -72,7 +73,7 @@ export async function PUT(request: NextRequest) {
   const parent = verifyParentToken(pt);
   if (!parent) return Response.json({ error: "家长验证已过期" }, { status: 401 });
 
-  const { feishuWebhook } = await request.json();
+  const { feishuWebhook, notifyThresholdMin } = await request.json();
 
   if (feishuWebhook && !isValidWebhookUrl(feishuWebhook)) {
     return Response.json(
@@ -81,9 +82,14 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  const data: Record<string, unknown> = { feishuWebhook: feishuWebhook || null };
+  if (typeof notifyThresholdMin === "number" && notifyThresholdMin >= 1 && notifyThresholdMin <= 30) {
+    data.notifyThresholdMin = notifyThresholdMin;
+  }
+
   await prisma.user.update({
     where: { id: parent.userId },
-    data: { feishuWebhook: feishuWebhook || null },
+    data,
   });
 
   return Response.json({ message: "保存成功" });
