@@ -31,6 +31,7 @@ model User {
   orders              Order[]
   variantUnlocks      VariantUnlock[]
   variantSubmissions  VariantSubmission[]
+  dailyFocusLogs     DailyFocusLog[]
 }
 
 model Problem {
@@ -193,6 +194,21 @@ model VariantSubmission {
   user              User               @relation(fields: [userId], references: [id])
   variant           VariantProblem     @relation(fields: [variantId], references: [id])
   wrongBookAnalyses WrongBookAnalysis[]
+}
+
+// ───── 每日专注记录 ─────
+
+model DailyFocusLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  date         String               // YYYY-MM-DD
+  focusMs      Int      @default(0)
+  distractMs   Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
 }
 
 // ───── 邮箱验证码 ─────

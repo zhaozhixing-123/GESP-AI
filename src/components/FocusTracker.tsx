@@ -5,6 +5,8 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 const DEFAULT_THRESHOLD_MIN = 2;
 const STORAGE_KEY = "focus_data";
 const SAVE_INTERVAL = 5; // 每 5 秒存一次 localStorage
+const SYNC_INTERVAL = 60; // 每 60 秒同步一次服务端
+const SPLIT_SCREEN_RATIO = 0.75; // 窗口宽度 < 屏幕 75% 视为分屏
 
 interface FocusTime {
   focusSeconds: number;
@@ -73,7 +75,6 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     function onStorage(e: StorageEvent) {
       if (e.key === "token") setHasToken(!!e.newValue);
     }
-    // 也定期检查（同一标签页 localStorage 不触发 storage 事件）
     const check = setInterval(() => {
       const t = !!getToken();
       setHasToken((prev) => prev !== t ? t : prev);
@@ -85,13 +86,47 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     };
   }, [getToken]);
 
+  // 同步到服务端
+  const syncToServer = useCallback((focusMs: number, distractMs: number) => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      // 用 sendBeacon 保证页面关闭时也能发出（POST）
+      // 但 sendBeacon 不支持自定义 header，所以正常情况用 fetch
+      fetch("/api/focus/sync", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ date: todayStr(), focusMs, distractMs }),
+        keepalive: true, // 允许页面关闭后继续发送
+      }).catch(() => {});
+    } catch {}
+  }, [getToken]);
+
+  // 从服务端恢复数据（localStorage 被清空时）
+  const restoreFromServer = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/focus/sync?date=${todayStr()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.focusMs > 0 || data.distractMs > 0) {
+        baseFocusMs.current = data.focusMs;
+        baseDistractMs.current = data.distractMs;
+      }
+    } catch {}
+  }, [getToken]);
+
   const sendNotify = useCallback(async (focusMs: number, distractMs: number) => {
     const token = getToken();
     if (!token) return;
-
     const focusMinutes = Math.max(0, Math.round(focusMs / 60000));
     const distractMinutes = Math.round(distractMs / 60000);
-
     try {
       await fetch("/api/focus/notify", {
         method: "POST",
@@ -117,8 +152,21 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 分屏检测：窗口宽度 < 屏幕 75%
+  const checkSplitScreen = useCallback(() => {
+    if (typeof screen === "undefined") return;
+    const screenW = screen.availWidth;
+    const windowW = window.outerWidth;
+    if (screenW > 0 && windowW < screenW * SPLIT_SCREEN_RATIO) {
+      markDistracted();
+    }
+  }, [markDistracted]);
+
   const tick = useCallback(() => {
     const now = Date.now();
+
+    // 分屏检测（每秒检查一次）
+    checkSplitScreen();
 
     // 本次会话的分心时间
     let sessionDistract = distractTotal.current;
@@ -144,7 +192,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       sendNotify(totalFocusMs, totalDistractMs);
     }
 
-    // 每 5 秒持久化一次
+    // 每 5 秒持久化到 localStorage
     tickCount.current++;
     if (tickCount.current % SAVE_INTERVAL === 0) {
       saveStored({
@@ -154,24 +202,32 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
         notifiedThreshold: notifiedThreshold.current,
       });
     }
-  }, [sendNotify]);
+
+    // 每 60 秒同步到服务端
+    if (tickCount.current % SYNC_INTERVAL === 0) {
+      syncToServer(totalFocusMs, totalDistractMs);
+    }
+  }, [sendNotify, syncToServer, checkSplitScreen]);
 
   useEffect(() => {
     if (!hasToken) return;
     if (initialized.current) return;
     initialized.current = true;
 
-    // 重置会话起点（登录后从此刻开始计时）
+    // 重置会话起点
     startTime.current = Date.now();
     distractTotal.current = 0;
     distractStart.current = null;
 
-    // 恢复历史数据
+    // 恢复历史数据：先查 localStorage，没有则从服务端恢复
     const stored = loadStored();
     if (stored) {
       baseFocusMs.current = stored.focusMs;
       baseDistractMs.current = stored.distractMs;
       notifiedThreshold.current = stored.notifiedThreshold;
+    } else {
+      // localStorage 被清空或跨天，尝试从服务端恢复
+      restoreFromServer();
     }
 
     // 从服务端获取家长设置的通知阈值
@@ -209,7 +265,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       lastWidth.current = currentWidth;
     }
 
-    // 页面关闭前保存
+    // 页面关闭前保存 + 同步
     function handleBeforeUnload() {
       const now = Date.now();
       let sessionDistract = distractTotal.current;
@@ -217,12 +273,16 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
         sessionDistract += now - distractStart.current;
       }
       const sessionFocus = Math.max(0, (now - startTime.current) - sessionDistract);
+      const totalFocusMs = baseFocusMs.current + sessionFocus;
+      const totalDistractMs = baseDistractMs.current + sessionDistract;
       saveStored({
         date: todayStr(),
-        focusMs: baseFocusMs.current + sessionFocus,
-        distractMs: baseDistractMs.current + sessionDistract,
+        focusMs: totalFocusMs,
+        distractMs: totalDistractMs,
         notifiedThreshold: notifiedThreshold.current,
       });
+      // 关闭前同步到服务端（keepalive 保证发送）
+      syncToServer(totalFocusMs, totalDistractMs);
     }
 
     document.addEventListener("visibilitychange", handleVisibility);
@@ -244,9 +304,9 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       clearInterval(timer);
-      handleBeforeUnload(); // 组件卸载时也保存
+      handleBeforeUnload();
     };
-  }, [hasToken, getToken, markDistracted, markFocused, tick]);
+  }, [hasToken, getToken, markDistracted, markFocused, tick, restoreFromServer, syncToServer]);
 
   return (
     <FocusContext.Provider value={time}>
