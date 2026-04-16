@@ -34,18 +34,18 @@ const FEATURES = [
 
 const COMPARISONS = [
   {
-    now: "卡住了 → 搜答案 → 通过了，但没学会",
-    ai: "卡住了 → AI 问他一个问题 → 他自己想通了",
+    now: ["卡住了", "搜答案", "通过了，但没学会"],
+    ai: ["卡住了", "AI 问他一个问题", "他自己想通了"],
     aiHighlight: "AI 问他一个问题",
   },
   {
-    now: "做错了 → 不知道为什么 → 下次还错",
-    ai: "做错了 → AI 分析错因 + 变形题再练 → 这个坑填上了",
+    now: ["做错了", "不知道为什么", "下次还错"],
+    ai: ["做错了", "AI 分析错因 + 变形题再练", "这个坑填上了"],
     aiHighlight: "AI 分析错因 + 变形题再练",
   },
   {
-    now: "刷题 → 不知道练什么 → 大量时间花在已经会的题上",
-    ai: "基于孩子的数据 → 每道题都是他最需要练的",
+    now: ["刷题", "不知道练什么", "大量时间花在已经会的题上"],
+    ai: ["基于孩子的数据", "每道题都是他最需要练的"],
     aiHighlight: "基于孩子的数据",
   },
 ];
@@ -185,7 +185,6 @@ export default function LandingPage() {
 
   const fadeCompare = useFadeIn();
   const fadeAiDemo = useFadeIn();
-  const fadeAiText = useFadeIn();
   const fadeQuote = useFadeIn();
   const fadeError = useFadeIn();
   const fadeParent = useFadeIn();
@@ -282,7 +281,24 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 第二屏 对比 ─────────────────────────────────────────────────── */}
+      {/* ── 第二屏 创始人原话 ───────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-12 md:py-16">
+        <div className="mx-auto max-w-[640px] text-center">
+          <div ref={fadeQuote.ref} className={fadeQuote.className}>
+            <blockquote
+              className="text-xl leading-relaxed text-[#333] sm:text-2xl"
+              style={{ fontFamily: "'Noto Serif SC', serif" }}
+            >
+              &ldquo;效率提升了5到10倍。原来一道题卡住就会浪费很多时间和情绪，会感到烦躁和无助。现在少走很多弯路。&rdquo;
+            </blockquote>
+            <p className="mt-6 text-sm text-[#999]">
+              赵知行，GESP.AI 创始人 · 小学五年级
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 第三屏 对比 ─────────────────────────────────────────────────── */}
       <section className="bg-[#f7f5f0] px-6 py-[72px]">
         <div className="mx-auto max-w-[760px]">
           <div ref={fadeCompare.ref} className={fadeCompare.className}>
@@ -301,19 +317,23 @@ export default function LandingPage() {
                   {/* 现在 */}
                   <div>
                     <span className="mb-2 inline-block rounded bg-[#f0eeea] px-2 py-0.5 text-xs font-medium text-[#999]">现在</span>
-                    <p className="text-sm leading-relaxed text-[#666]">{c.now}</p>
+                    <div className="space-y-1 text-sm leading-relaxed text-[#666]">
+                      {c.now.map((step, j) => (
+                        <p key={j}>{j > 0 && <span className="mr-1 text-[#ccc]">↓</span>}{step}</p>
+                      ))}
+                    </div>
                   </div>
                   {/* AI 私教 */}
                   <div>
                     <span className="mb-2 inline-block rounded bg-[#1d5bd6]/10 px-2 py-0.5 text-xs font-medium text-[#1d5bd6]">AI 私教</span>
-                    <p className="text-sm leading-relaxed text-[#333]">
-                      {c.ai.split(c.aiHighlight).map((part, j) => (
-                        <span key={j}>
-                          {part}
-                          {j === 0 && <strong className="text-[#1d5bd6]">{c.aiHighlight}</strong>}
-                        </span>
+                    <div className="space-y-1 text-sm leading-relaxed text-[#333]">
+                      {c.ai.map((step, j) => (
+                        <p key={j}>
+                          {j > 0 && <span className="mr-1 text-[#ccc]">↓</span>}
+                          {step === c.aiHighlight ? <strong className="text-[#1d5bd6]">{step}</strong> : step}
+                        </p>
                       ))}
-                    </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -322,7 +342,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 第三屏 AI 私教演示 ──────────────────────────────────────────── */}
+      {/* ── 第四屏 AI 私教演示 ──────────────────────────────────────────── */}
       <section className="bg-gradient-to-b from-[#0c1524] to-[#111d30] px-6 py-[72px]">
         <div className="mx-auto max-w-[960px]">
           <div className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
@@ -346,23 +366,6 @@ export default function LandingPage() {
             <div>
               <ChatDemo />
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 第四屏 创始人原话 ───────────────────────────────────────────── */}
-      <section className="bg-[#f7f5f0] px-6 py-12 md:py-16">
-        <div className="mx-auto max-w-[640px] text-center">
-          <div ref={fadeQuote.ref} className={fadeQuote.className}>
-            <blockquote
-              className="text-xl leading-relaxed text-[#333] sm:text-2xl"
-              style={{ fontFamily: "'Noto Serif SC', serif" }}
-            >
-              &ldquo;效率提升了5到10倍。原来一道题卡住就会浪费很多时间和情绪，会感到烦躁和无助。现在少走很多弯路。&rdquo;
-            </blockquote>
-            <p className="mt-6 text-sm text-[#999]">
-              赵知行，GESP.AI 创始人 · 小学五年级
-            </p>
           </div>
         </div>
       </section>
@@ -511,7 +514,6 @@ export default function LandingPage() {
 
           {/* 免费提示 */}
           <div className="mt-4 rounded-lg border border-[#1d5bd6]/15 bg-[#1d5bd6]/5 px-4 py-3 text-center text-sm text-[#1d5bd6]">
-            <span className="mr-1">🎁</span>
             免费体验 1 道完整真题，包含 AI 私教对话、变形题、错因分析。先试，再决定。
           </div>
         </div>
@@ -539,9 +541,6 @@ export default function LandingPage() {
         <span className="text-lg font-bold text-[#1d5bd6]" style={{ fontFamily: "'Noto Serif SC', serif" }}>
           GESP.AI
         </span>
-        <p className="mt-1 text-xs text-[#aaa]">
-          GESP AI 私教 · 告别题海，自学成才 · gesp.ai
-        </p>
       </footer>
     </div>
   );
