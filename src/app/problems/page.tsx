@@ -39,6 +39,23 @@ function ProblemsContent() {
   const [showWelcome, setShowWelcome] = useState(false);
 
   const level = searchParams.get("level") || "";
+  const [defaultApplied, setDefaultApplied] = useState(false);
+
+  // 首次加载：如果 URL 没有 level 参数，自动用用户的 targetLevel
+  useEffect(() => {
+    if (searchParams.has("level") || defaultApplied) return;
+    const token = localStorage.getItem("token");
+    if (!token) { setDefaultApplied(true); return; }
+    fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.user?.targetLevel) {
+          router.replace(`/problems?level=${data.user.targetLevel}${searchParams.get("welcome") === "1" ? "&welcome=1" : ""}`);
+        }
+        setDefaultApplied(true);
+      })
+      .catch(() => setDefaultApplied(true));
+  }, [searchParams, defaultApplied, router]);
 
   useEffect(() => {
     if (searchParams.get("welcome") === "1") setShowWelcome(true);
