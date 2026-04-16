@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { isValidWebhookUrl } from "@/lib/webhook";
+import { isValidWebhookUrl, buildWebhookBody } from "@/lib/webhook";
 
 // POST: 测试飞书 Webhook
 export async function POST(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
   if (!isValidWebhookUrl(webhookUrl)) {
     return Response.json(
-      { error: "Webhook URL 不合法，仅支持飞书 Webhook（https://open.feishu.cn/...）" },
+      { error: "Webhook URL 不合法，仅支持飞书（open.feishu.cn）或钉钉（oapi.dingtalk.com）" },
       { status: 400 }
     );
   }
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ msg_type: "text", content: { text } }),
+      body: buildWebhookBody(webhookUrl, text),
     });
 
     if (!res.ok) {

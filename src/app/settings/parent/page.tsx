@@ -206,15 +206,15 @@ export default function ParentSettingsPage() {
           <div className="space-y-6">
             {/* 飞书 Webhook */}
             <div className="rounded-lg bg-white p-6 shadow">
-              <h2 className="mb-2 text-lg font-semibold text-gray-900">飞书通知</h2>
+              <h2 className="mb-2 text-lg font-semibold text-gray-900">分心通知</h2>
               <p className="mb-4 text-sm text-gray-500">
-                配置飞书机器人 Webhook，孩子分心时自动发送通知到飞书群。
+                配置飞书或钉钉机器人 Webhook，孩子分心时自动发送通知。
               </p>
               <div className="mb-3">
                 <label className="mb-1 block text-sm font-medium text-gray-700">Webhook URL</label>
                 <input type="url" value={webhook} onChange={(e) => setWebhook(e.target.value)}
                   className="w-full rounded-md border px-3 py-2 text-sm font-mono"
-                  placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." />
+                  placeholder="飞书或钉钉 Webhook 地址" />
               </div>
               <div className="mb-3">
                 <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -245,34 +245,52 @@ export default function ParentSettingsPage() {
                   {testing ? "发送中..." : "发送测试消息"}
                 </button>
               </div>
+              {/* 钉钉引导 */}
               <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4 text-xs text-gray-600 space-y-3">
-                <p className="font-medium text-gray-800">如何配置飞书通知（需在电脑端飞书操作，手机端不支持）：</p>
+                <p className="font-medium text-gray-800">方式一：钉钉通知（推荐，手机即可完成）</p>
+                <ol className="list-inside list-decimal space-y-2 leading-relaxed">
+                  <li>
+                    打开钉钉，创建一个群聊（可以只拉自己和一个人，之后把对方移出）
+                  </li>
+                  <li>
+                    点击群聊右上角 <span className="font-medium text-gray-800">「...」</span> → 找到 <span className="font-medium text-gray-800">「机器人」</span> → 点击 <span className="font-medium text-gray-800">「添加机器人」</span>
+                  </li>
+                  <li>
+                    选择 <span className="font-medium text-gray-800">「自定义」</span> 机器人（通过 Webhook 接入），取名如 <span className="text-gray-800">"GESP 通知"</span>
+                  </li>
+                  <li>
+                    <span className="font-medium text-red-600">重要：</span>安全设置选择 <span className="font-medium text-gray-800">「自定义关键词」</span>，填写 <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 font-mono font-medium text-blue-700">GESP</span>
+                  </li>
+                  <li>
+                    点击 <span className="font-medium text-gray-800">「完成」</span>，复制生成的 Webhook 地址（以 https://oapi.dingtalk.com/ 开头）粘贴到上方输入框
+                  </li>
+                </ol>
+              </div>
+
+              {/* 飞书引导 */}
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50/50 p-4 text-xs text-gray-600 space-y-3">
+                <p className="font-medium text-gray-800">方式二：飞书通知（需在电脑端操作）</p>
                 <ol className="list-inside list-decimal space-y-2 leading-relaxed">
                   <li>
                     打开 <span className="font-medium text-gray-800">电脑端飞书</span>，创建一个群聊（可以只拉自己一个人）
                   </li>
                   <li>
-                    点击群聊窗口右上角的 <span className="font-medium text-gray-800">「...」</span> 图标，在弹出菜单中点击 <span className="font-medium text-gray-800">「设置」</span>
+                    点击群聊右上角 <span className="font-medium text-gray-800">「...」</span> → <span className="font-medium text-gray-800">「设置」</span> → <span className="font-medium text-gray-800">「群机器人」</span> → <span className="font-medium text-gray-800">「添加机器人」</span>
                   </li>
                   <li>
-                    在设置页面滚动找到 <span className="font-medium text-gray-800">「群机器人」</span>，点击 <span className="font-medium text-gray-800">「添加机器人」</span>
+                    选择 <span className="font-medium text-gray-800">「自定义机器人」</span>（Custom Bot），取名如 <span className="text-gray-800">"GESP 通知"</span>
                   </li>
                   <li>
-                    在机器人列表中找到并选择 <span className="font-medium text-gray-800">「自定义机器人」</span>（Custom Bot），给机器人取个名字，如 <span className="text-gray-800">"GESP 通知"</span>
+                    <span className="font-medium text-red-600">重要：</span>安全设置选择 <span className="font-medium text-gray-800">「自定义关键词」</span>，填写 <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 font-mono font-medium text-blue-700">GESP</span>
                   </li>
                   <li>
-                    <span className="font-medium text-red-600">重要：</span>安全设置选择 <span className="font-medium text-gray-800">「自定义关键词」</span>，在输入框中填写 <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 font-mono font-medium text-blue-700">GESP</span>
-                  </li>
-                  <li>
-                    点击 <span className="font-medium text-gray-800">「完成」</span>，页面会显示一个 Webhook 地址（以 https://open.feishu.cn/ 开头），<span className="font-medium text-gray-800">复制整个地址</span>粘贴到上方输入框
-                  </li>
-                  <li>
-                    点击上方的 <span className="font-medium text-gray-800">「保存」</span>，然后点 <span className="font-medium text-gray-800">「发送测试消息」</span> 验证是否收到通知
+                    点击 <span className="font-medium text-gray-800">「完成」</span>，复制 Webhook 地址（以 https://open.feishu.cn/ 开头）粘贴到上方输入框
                   </li>
                 </ol>
-                <p className="rounded bg-amber-50 px-2 py-1.5 text-amber-700">
-                  注意：安全设置务必选「自定义关键词」并填写 GESP，否则消息会被飞书拦截无法送达。
-                </p>
+              </div>
+
+              <div className="mt-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                注意：安全设置务必选「自定义关键词」并填写 GESP，否则消息会被拦截无法送达。配置完成后请点击「发送测试消息」验证。
               </div>
             </div>
 

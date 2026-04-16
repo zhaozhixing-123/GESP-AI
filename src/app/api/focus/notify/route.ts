@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTokenFromRequest, verifyToken } from "@/lib/auth";
-import { isValidWebhookUrl } from "@/lib/webhook";
+import { isValidWebhookUrl, buildWebhookBody } from "@/lib/webhook";
 
 export async function POST(request: NextRequest) {
   const token = getTokenFromRequest(request);
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const res = await fetch(user.feishuWebhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ msg_type: "text", content: { text } }),
+      body: buildWebhookBody(user.feishuWebhook, text),
     });
 
     if (!res.ok) {

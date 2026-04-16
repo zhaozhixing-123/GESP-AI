@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isValidWebhookUrl } from "@/lib/webhook";
+import { isValidWebhookUrl, isDingtalk, buildWebhookBody } from "@/lib/webhook";
 
 describe("isValidWebhookUrl", () => {
   // ---- 合法 URL ----
@@ -22,11 +22,23 @@ describe("isValidWebhookUrl", () => {
     ).toBe(true);
   });
 
+  it("accepts dingtalk webhook URL", () => {
+    expect(
+      isValidWebhookUrl("https://oapi.dingtalk.com/robot/send?access_token=abc123"),
+    ).toBe(true);
+  });
+
   // ---- 不合法 URL ----
 
   it("rejects http (not https)", () => {
     expect(
       isValidWebhookUrl("http://open.feishu.cn/open-apis/bot/v2/hook/abc"),
+    ).toBe(false);
+  });
+
+  it("rejects http dingtalk", () => {
+    expect(
+      isValidWebhookUrl("http://oapi.dingtalk.com/robot/send?access_token=abc"),
     ).toBe(false);
   });
 
@@ -53,9 +65,14 @@ describe("isValidWebhookUrl", () => {
   });
 
   it("rejects domain that merely contains feishu.cn", () => {
-    // evil-feishu.cn should NOT match
     expect(
       isValidWebhookUrl("https://evil-feishu.cn/hook"),
+    ).toBe(false);
+  });
+
+  it("rejects domain that merely contains dingtalk.com", () => {
+    expect(
+      isValidWebhookUrl("https://evil-dingtalk.com/hook"),
     ).toBe(false);
   });
 
@@ -69,5 +86,41 @@ describe("isValidWebhookUrl", () => {
     expect(
       isValidWebhookUrl("ftp://open.feishu.cn/hook"),
     ).toBe(false);
+  });
+});
+
+describe("isDingtalk", () => {
+  it("returns true for dingtalk URL", () => {
+    expect(isDingtalk("https://oapi.dingtalk.com/robot/send?access_token=abc")).toBe(true);
+  });
+
+  it("returns false for feishu URL", () => {
+    expect(isDingtalk("https://open.feishu.cn/open-apis/bot/v2/hook/abc")).toBe(false);
+  });
+
+  it("returns false for invalid URL", () => {
+    expect(isDingtalk("not-a-url")).toBe(false);
+  });
+});
+
+describe("buildWebhookBody", () => {
+  const text = "[GESP.AI] 测试消息";
+
+  it("builds feishu format for feishu URL", () => {
+    const body = JSON.parse(
+      buildWebhookBody("https://open.feishu.cn/open-apis/bot/v2/hook/abc", text),
+    );
+    expect(body.msg_type).toBe("text");
+    expect(body.content.text).toBe(text);
+    expect(body.msgtype).toBeUndefined();
+  });
+
+  it("builds dingtalk format for dingtalk URL", () => {
+    const body = JSON.parse(
+      buildWebhookBody("https://oapi.dingtalk.com/robot/send?access_token=abc", text),
+    );
+    expect(body.msgtype).toBe("text");
+    expect(body.text.content).toBe(text);
+    expect(body.msg_type).toBeUndefined();
   });
 });

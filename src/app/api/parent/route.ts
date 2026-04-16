@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest) {
 
   if (feishuWebhook && !isValidWebhookUrl(feishuWebhook)) {
     return Response.json(
-      { error: "Webhook URL 不合法，仅支持飞书 Webhook（https://open.feishu.cn/...）" },
+      { error: "Webhook URL 不合法，仅支持飞书（open.feishu.cn）或钉钉（oapi.dingtalk.com）" },
       { status: 400 }
     );
   }
