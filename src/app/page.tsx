@@ -25,11 +25,29 @@ const PLANS = [
 
 const FEATURES = [
   "全部真题无限刷",
-  "AI 老师无限对话",
+  "AI 私教无限对话",
   "全部变形题解锁",
   "AI 错因分析",
   "模拟考试 + AI 诊断报告",
   "专注力追踪 + 家长通知",
+];
+
+const COMPARISONS = [
+  {
+    now: "卡住了 → 搜答案 → 通过了，但没学会",
+    ai: "卡住了 → AI 问他一个问题 → 他自己想通了",
+    aiHighlight: "AI 问他一个问题",
+  },
+  {
+    now: "做错了 → 不知道为什么 → 下次还错",
+    ai: "做错了 → AI 分析错因 + 变形题再练 → 这个坑填上了",
+    aiHighlight: "AI 分析错因 + 变形题再练",
+  },
+  {
+    now: "刷题 → 不知道练什么 → 大量时间花在已经会的题上",
+    ai: "基于孩子的数据 → 每道题都是他最需要练的",
+    aiHighlight: "基于孩子的数据",
+  },
 ];
 
 // ─── 滚动渐入 Hook ────────────────────────────────────────────────────────────
@@ -60,7 +78,6 @@ function ChatDemo() {
   const [started, setStarted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // IntersectionObserver 触发播放
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -88,7 +105,7 @@ function ChatDemo() {
       setMessages((prev) => [...prev, msg]);
       await sleep(300);
     }
-    await sleep(3000);
+    await sleep(3500);
   }, []);
 
   useEffect(() => {
@@ -102,7 +119,6 @@ function ChatDemo() {
     return () => { cancelled = true; };
   }, [started, playSequence]);
 
-  // 只滚动聊天容器内部，不影响页面滚动
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const container = scrollRef.current;
@@ -117,7 +133,7 @@ function ChatDemo() {
         {/* 顶栏 */}
         <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
           <span className="h-2 w-2 rounded-full bg-[#34d399]" />
-          <span className="text-sm text-gray-400">AI 老师在线</span>
+          <span className="text-sm text-gray-400">AI 私教在线</span>
           <span className="text-xs text-gray-600 ml-auto font-mono">晚上 9:47</span>
         </div>
         {/* 消息区 */}
@@ -146,7 +162,7 @@ function ChatDemo() {
           )}
         </div>
       </div>
-      <p className="mt-3 text-center text-xs text-gray-500">真实 AI 对话示例 · Claude 驱动</p>
+      <p className="mt-3 text-center text-xs text-gray-500">真实对话示例</p>
     </div>
   );
 }
@@ -161,21 +177,20 @@ export default function LandingPage() {
   const router = useRouter();
   const [selectedPlan, setSelectedPlan] = useState("quarterly");
 
-  // 已登录用户直接跳转题库
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("token")) {
       router.replace("/problems");
     }
   }, [router]);
 
-  const fade1 = useFadeIn();
-  const fade2 = useFadeIn();
-  const fade3 = useFadeIn();
-  const fade4 = useFadeIn();
-  const fade5 = useFadeIn();
-  const fade6 = useFadeIn();
-  const fade7 = useFadeIn();
-  const fade8 = useFadeIn();
+  const fadeCompare = useFadeIn();
+  const fadeAiDemo = useFadeIn();
+  const fadeAiText = useFadeIn();
+  const fadeQuote = useFadeIn();
+  const fadeError = useFadeIn();
+  const fadeParent = useFadeIn();
+  const fadePricing = useFadeIn();
+  const fadeCta = useFadeIn();
 
   const plan = PLANS.find((p) => p.id === selectedPlan)!;
 
@@ -192,7 +207,7 @@ export default function LandingPage() {
             href={REGISTER_URL}
             className="rounded-lg bg-[#1d5bd6] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-lg"
           >
-            免费体验
+            开始使用
           </Link>
         </div>
       </nav>
@@ -207,33 +222,51 @@ export default function LandingPage() {
         />
 
         <div className="relative z-10 max-w-[720px]">
-          <span className="inline-block rounded-full border border-[#1d5bd6]/20 bg-[#1d5bd6]/5 px-4 py-1.5 text-xs font-medium text-[#1d5bd6]">
-            由一名 GESP 五级小学生创建并验证
+          {/* pill badge */}
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#1d5bd6]/20 bg-[#1d5bd6]/5 px-4 py-1.5 text-xs font-medium text-[#1d5bd6]">
+            <span className="h-2 w-2 rounded-full bg-[#34d399]" />
+            创始人：赵知行，小学五年级
           </span>
 
-          <h1 className="mt-8 text-3xl font-bold leading-snug tracking-tight sm:text-4xl md:text-[2.75rem] md:leading-[1.3]" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-            课堂教了算法，
-            <br />
-            但孩子自己练题卡住的时候，
-            <br />
-            没人能帮他
-          </h1>
-
-          <p className="mx-auto mt-6 max-w-lg text-base leading-relaxed text-[#444] sm:text-lg">
-            GESP.AI——孩子自己练题时，身边的 AI 老师。
-            <br />
-            卡住了问一句，不给答案，引导他自己想明白。
+          {/* 产品名 */}
+          <p className="mt-6 text-lg font-bold text-[#1d5bd6] sm:text-xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+            GESP AI 私教
           </p>
 
+          {/* 主标题 */}
+          <h1
+            className="mt-4 text-[clamp(2rem,5vw,3.25rem)] font-black leading-tight tracking-tight"
+            style={{ fontFamily: "'Noto Serif SC', serif" }}
+          >
+            告别题海，自学成才
+          </h1>
+
+          {/* 三短句 */}
+          <p className="mx-auto mt-6 max-w-xl text-[clamp(0.875rem,2vw,1.0625rem)] leading-relaxed text-[#666]">
+            不给答案，引导孩子自己想通 · 基于孩子的数据个性化训练 · 24小时在线
+          </p>
+
+          {/* 数据条 */}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm font-medium text-[#1d5bd6]">
+            <span>200+ 真题</span>
+            <span className="text-[#ccc]">·</span>
+            <span>800+ AI 变形题</span>
+            <span className="text-[#ccc]">·</span>
+            <span>1-8 级全覆盖</span>
+          </div>
+
+          {/* CTA */}
           <div className="mt-10">
             <Link
               href={REGISTER_URL}
               className="inline-block rounded-xl bg-[#1d5bd6] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[#1d5bd6]/20 transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#1d5bd6]/30"
             >
-              免费体验一道题
+              开始使用
             </Link>
-            <p className="mt-3 text-sm text-[#aaa]">
-              完整体验 AI 老师 + 变形题 + 错因分析，无需付费
+            <p className="mt-4">
+              <Link href="/story" className="text-sm text-[#1d5bd6] hover:underline">
+                了解赵知行的故事 →
+              </Link>
             </p>
           </div>
         </div>
@@ -249,93 +282,100 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 第二屏 场景 ─────────────────────────────────────────────────── */}
-      <section className="bg-[#f7f5f0] px-6 py-20 md:py-28">
-        <div className="mx-auto max-w-[700px]">
-          <div ref={fade1.ref} className={fade1.className}>
-            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
-              你是不是也经历过
-            </span>
-          </div>
-
-          {/* 场景一 */}
-          <div ref={fade2.ref} className={`mt-10 ${fade2.className}`}>
-            <div className="rounded-xl border border-[#e8e4db] bg-white p-6 md:p-8">
-              <span className="inline-block rounded bg-[#0c1524] px-2 py-0.5 text-xs font-mono text-white">晚上 9:12</span>
-              <p className="mt-4 text-[#444] leading-relaxed">
-                孩子刷题卡住了。他盯着屏幕，不知道哪里错了。你走过去看了一眼——看不懂 C++。他要么放弃这道题，要么打开搜索引擎，把别人的答案抄了一遍。
-              </p>
-              <p className="mt-3 text-sm italic text-[#1d5bd6]">
-                这道题"过了"。但你们都知道，他没有学会。
-              </p>
-            </div>
-          </div>
-
-          {/* 场景二 */}
-          <div ref={fade3.ref} className={`mt-6 ${fade3.className}`}>
-            <div className="rounded-xl border border-[#e8e4db] bg-white p-6 md:p-8">
-              <span className="inline-block rounded bg-[#0c1524] px-2 py-0.5 text-xs font-mono text-white">考前一周</span>
-              <p className="mt-4 text-[#444] leading-relaxed">
-                你问孩子准备得怎么样，他说"差不多了"。你想帮他检验一下，但你不知道怎么检验。考试那天，题目换了个情境。成绩出来的那一刻，你才知道"差不多了"到底差多少。
-              </p>
-            </div>
-          </div>
-
-          {/* 转折 */}
-          <div ref={fade4.ref} className={`mt-8 ${fade4.className}`}>
-            <div className="rounded-xl bg-[#0c1524] p-6 md:p-8 text-gray-300">
-              <p className="leading-relaxed">问题不在课堂，也不在孩子。</p>
-              <p className="mt-2 font-bold text-white leading-relaxed">
-                课堂负责"教"，但孩子需要帮助的时刻，是自己"练"的时候——而那个时刻，没有人在。
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 第三屏 AI 老师 ──────────────────────────────────────────────── */}
-      <section className="bg-gradient-to-b from-[#0c1524] to-[#111d30] px-6 py-20 md:py-28">
-        <div className="mx-auto max-w-[720px]">
-          <div ref={fade5.ref} className={fade5.className}>
-            <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-[#4a7fe8]">
-              现在，有人在了
-            </span>
-
-            <h2 className="mt-6 text-2xl font-bold text-white sm:text-3xl md:text-4xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-              晚上九点，AI 老师还在
-            </h2>
-            <p className="mt-4 max-w-lg text-base leading-relaxed text-gray-400">
-              孩子卡住的时候发一条消息，AI 老师不会直接给答案——
-              而是问他一个问题，引导他自己找到答案。
-            </p>
-          </div>
-
-          {/* AI 对话演示 */}
-          <div className="mt-10">
-            <ChatDemo />
-          </div>
-
-          <div ref={fade6.ref} className={`mt-10 text-center ${fade6.className}`}>
-            <p className="text-base leading-relaxed text-gray-300">
-              不给答案，只问问题。
-              <br />
-              像一个有耐心的老师坐在旁边——
-              <br />
-              24 小时在线，随时可以问。
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 第四屏 做错了不要紧 ─────────────────────────────────────────── */}
-      <section className="bg-[#f7f5f0] px-6 py-20 md:py-28">
+      {/* ── 第二屏 对比 ─────────────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-[72px]">
         <div className="mx-auto max-w-[760px]">
-          <div ref={fade7.ref} className={fade7.className}>
+          <div ref={fadeCompare.ref} className={fadeCompare.className}>
+            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
+              告别题海
+            </span>
+            <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              你的孩子现在怎么练题？
+            </h2>
+          </div>
+
+          <div className="mt-10 space-y-5">
+            {COMPARISONS.map((c, i) => (
+              <div key={i} className="rounded-xl border border-[#e8e4db] bg-white p-5 md:p-6">
+                <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+                  {/* 现在 */}
+                  <div>
+                    <span className="mb-2 inline-block rounded bg-[#f0eeea] px-2 py-0.5 text-xs font-medium text-[#999]">现在</span>
+                    <p className="text-sm leading-relaxed text-[#666]">{c.now}</p>
+                  </div>
+                  {/* AI 私教 */}
+                  <div>
+                    <span className="mb-2 inline-block rounded bg-[#1d5bd6]/10 px-2 py-0.5 text-xs font-medium text-[#1d5bd6]">AI 私教</span>
+                    <p className="text-sm leading-relaxed text-[#333]">
+                      {c.ai.split(c.aiHighlight).map((part, j) => (
+                        <span key={j}>
+                          {part}
+                          {j === 0 && <strong className="text-[#1d5bd6]">{c.aiHighlight}</strong>}
+                        </span>
+                      ))}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 第三屏 AI 私教演示 ──────────────────────────────────────────── */}
+      <section className="bg-gradient-to-b from-[#0c1524] to-[#111d30] px-6 py-[72px]">
+        <div className="mx-auto max-w-[960px]">
+          <div className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+            {/* 左：文案 */}
+            <div ref={fadeAiDemo.ref} className={fadeAiDemo.className}>
+              <span className="inline-block rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-[#4a7fe8]">
+                自学成才
+              </span>
+
+              <h2 className="mt-6 text-2xl font-bold text-white sm:text-3xl md:text-4xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+                只提示启发
+                <br />
+                不给答案
+              </h2>
+              <p className="mt-4 max-w-lg text-base leading-relaxed text-gray-400">
+                孩子卡住的时候发一条消息。AI 私教不会直接给答案——它会问孩子一个问题，引导他自己想通。
+              </p>
+            </div>
+
+            {/* 右：对话演示 */}
+            <div>
+              <ChatDemo />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 第四屏 创始人原话 ───────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-12 md:py-16">
+        <div className="mx-auto max-w-[640px] text-center">
+          <div ref={fadeQuote.ref} className={fadeQuote.className}>
+            <blockquote
+              className="text-xl leading-relaxed text-[#333] sm:text-2xl"
+              style={{ fontFamily: "'Noto Serif SC', serif" }}
+            >
+              &ldquo;效率提升了5到10倍。原来一道题卡住就会浪费很多时间和情绪，会感到烦躁和无助。现在少走很多弯路。&rdquo;
+            </blockquote>
+            <p className="mt-6 text-sm text-[#999]">
+              赵知行，GESP.AI 创始人 · 小学五年级
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 第五屏 做错了不要紧 ─────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-[72px]">
+        <div className="mx-auto max-w-[760px]">
+          <div ref={fadeError.ref} className={fadeError.className}>
             <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
               从出错到掌握
             </span>
             <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-              做错了？AI 陪他把这个坑填上。
+              做错了？AI 私教陪他把这个坑填上。
             </h2>
           </div>
 
@@ -347,7 +387,7 @@ export default function LandingPage() {
               </span>
               <h3 className="mt-4 text-lg font-bold">AI 告诉他为什么错</h3>
               <p className="mt-2 text-sm leading-relaxed text-[#444]">
-                不只说"答案不对"——哪里错了、这类错误为什么容易犯、下次怎么避免。从搞懂一道题，到搞懂一类题。
+                不只说&ldquo;答案不对&rdquo;——哪里错了、这类错误为什么容易犯、下次怎么避免。从搞懂一道题，到搞懂一类题。
               </p>
             </div>
             {/* 步骤二 */}
@@ -361,62 +401,60 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* 数据条 */}
-          <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {[
-              { value: "200+", label: "道历年真题" },
-              { value: "800+", label: "道 AI 变形题" },
-              { value: "1-8 级", label: "全覆盖" },
-              { value: "24h", label: "AI 老师在线" },
-            ].map((item) => (
-              <div key={item.label} className="rounded-lg border border-[#e8e4db] bg-white px-4 py-4 text-center">
-                <div className="text-xl font-bold text-[#1d5bd6] sm:text-2xl">{item.value}</div>
-                <div className="mt-1 text-xs text-[#777]">{item.label}</div>
-              </div>
-            ))}
+      {/* ── 第六屏 家长看得见 ───────────────────────────────────────────── */}
+      <section className="bg-gradient-to-b from-[#eef3fb] to-[#f7f5f0] px-6 py-[72px]">
+        <div className="mx-auto max-w-[900px]">
+          <div ref={fadeParent.ref} className={fadeParent.className}>
+            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
+              为家长设计
+            </span>
+            <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
+              不用问他&ldquo;学得怎么样&rdquo;
+              <br />
+              你自己能看到
+            </h2>
+          </div>
+
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6">
+              <h3 className="text-lg font-bold">薄弱知识点一目了然</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#444]">
+                递归错了几次、边界条件错了几次——哪里弱，看数据就知道。
+              </p>
+            </div>
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6">
+              <h3 className="text-lg font-bold">考前知道大概什么水平</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#444]">
+                仿真模拟考试，考完 AI 自动生成诊断报告。不用等到考试那天。
+              </p>
+            </div>
+            <div className="rounded-xl border border-[#e8e4db] bg-white p-6">
+              <h3 className="text-lg font-bold">他在认真练吗</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#444]">
+                分心超过两分钟，你会收到提醒。不用坐在旁边盯着。
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── 第五屏 故事 + 定价 ──────────────────────────────────────────── */}
-      <section className="bg-gradient-to-b from-[#eef3fb] to-[#f7f5f0] px-6 py-20 md:py-28">
+      {/* ── 第七屏 定价 ─────────────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-[72px]">
         <div className="mx-auto max-w-[640px]">
-          {/* 创始人故事 */}
-          <div ref={fade8.ref} className={fade8.className}>
-            <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
-              关于创造者
-            </span>
-            <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-              这个产品的创造者，今年五年级。
-            </h2>
-          </div>
-
-          <div className="mt-8 rounded-xl border border-[#e8e4db] bg-white p-6 md:p-8">
-            <p className="text-[#444] leading-relaxed">
-              赵知行，五年级。从四年级开始学信息学。
-            </p>
-            <p className="mt-4 text-[#444] leading-relaxed">
-              他在备考中碰到了和所有孩子一样的问题：<strong className="text-[#0c1524]">课上听懂了，回家练题卡住了，没人能帮他。</strong>去网上搜答案吧，搜到了也不知道为什么——下次遇到还是不会。
-            </p>
-            <p className="mt-4 text-[#444] leading-relaxed">
-              他想要的很简单：一个在他卡住的时候，不告诉他答案、但能引导他自己想明白的工具。找不到，他就自己写了一个。
-            </p>
-            <p className="mt-4 text-[#444] leading-relaxed">
-              2026 年 3 月，他用这套方法通过了 <span className="font-bold text-[#1d5bd6]">GESP C++ 五级</span>。现在他把它开放给所有正在备考的孩子。
-            </p>
-          </div>
-
-          {/* 定价 */}
-          <div className="mt-16">
+          <div ref={fadePricing.ref} className={fadePricing.className}>
             <span className="inline-block rounded-full border border-[#e8e4db] bg-white px-3 py-1 text-xs font-medium text-[#777]">
               价格透明
             </span>
             <h2 className="mt-6 text-2xl font-bold sm:text-3xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-              一节课的价格，换一整个月的 AI 陪练。
+              一节课的价格
+              <br />
+              换一整个月的 AI 私教
             </h2>
             <p className="mt-3 text-sm text-[#777]">
-              课堂负责教，GESP.AI 负责练。不是替代，是补全。
+              课堂负责教，AI 私教负责练。不是替代，是补全。
             </p>
           </div>
 
@@ -467,34 +505,31 @@ export default function LandingPage() {
               href={REGISTER_URL}
               className="mt-6 inline-block w-full rounded-xl bg-[#1d5bd6] py-3 text-sm font-semibold text-white transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-lg"
             >
-              立即开始
+              开始使用
             </Link>
           </div>
 
           {/* 免费提示 */}
           <div className="mt-4 rounded-lg border border-[#1d5bd6]/15 bg-[#1d5bd6]/5 px-4 py-3 text-center text-sm text-[#1d5bd6]">
             <span className="mr-1">🎁</span>
-            免费体验：1 道完整真题，包含 AI 老师对话、变形题、错因分析。先试，再决定。
+            免费体验 1 道完整真题，包含 AI 私教对话、变形题、错因分析。先试，再决定。
           </div>
         </div>
       </section>
 
-      {/* ── 第六屏 最终 CTA ─────────────────────────────────────────────── */}
+      {/* ── 第八屏 最终 CTA ─────────────────────────────────────────────── */}
       <section className="bg-[#0c1524] px-6 py-24 md:py-32 text-center">
-        <div className="mx-auto max-w-lg">
+        <div ref={fadeCta.ref} className={`mx-auto max-w-lg ${fadeCta.className}`}>
           <h2 className="text-2xl font-bold text-white sm:text-3xl md:text-4xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-            下次孩子卡住的时候
+            告别题海，自学成才
             <br />
-            <span className="text-[#4a7fe8]">让他试试问 AI 老师</span>
+            <span className="text-[#4a7fe8]">从这一道题开始</span>
           </h2>
-          <p className="mt-4 text-gray-400">
-            免费体验一道完整题目，感受 AI 引导式教学的效果
-          </p>
           <Link
             href={REGISTER_URL}
             className="mt-8 inline-block rounded-xl border-2 border-white bg-transparent px-8 py-3.5 text-base font-semibold text-white transition hover:bg-white hover:text-[#0c1524] hover:-translate-y-0.5"
           >
-            免费开始体验
+            免费体验一道题
           </Link>
         </div>
       </section>
@@ -505,7 +540,7 @@ export default function LandingPage() {
           GESP.AI
         </span>
         <p className="mt-1 text-xs text-[#aaa]">
-          专为 GESP 备考设计的 AI 学习平台 · gesp.ai
+          GESP AI 私教 · 告别题海，自学成才 · gesp.ai
         </p>
       </footer>
     </div>
