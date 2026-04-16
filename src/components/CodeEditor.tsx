@@ -1,7 +1,14 @@
 "use client";
 
 import { useRef, useCallback } from "react";
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
+
+// 默认从 jsDelivr CDN 加载，国内无法访问，改用 npmmirror（阿里云）
+loader.config({
+  paths: {
+    vs: "https://registry.npmmirror.com/monaco-editor/0.55.1/files/min/vs",
+  },
+});
 
 interface CodeEditorProps {
   value: string;
