@@ -48,6 +48,7 @@ export function useFocusTime() {
 
 export function FocusProvider({ children }: { children: React.ReactNode }) {
   const [time, setTime] = useState<FocusTime>({ focusSeconds: 0, distractSeconds: 0 });
+  const [hasToken, setHasToken] = useState(false);
 
   // 从 localStorage 恢复的历史累积值
   const baseFocusMs = useRef(0);
@@ -65,6 +66,24 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
   const getToken = useCallback(() => {
     return typeof window !== "undefined" ? localStorage.getItem("token") : null;
   }, []);
+
+  // 监听 token 变化（登录/登出）
+  useEffect(() => {
+    if (getToken()) setHasToken(true);
+    function onStorage(e: StorageEvent) {
+      if (e.key === "token") setHasToken(!!e.newValue);
+    }
+    // 也定期检查（同一标签页 localStorage 不触发 storage 事件）
+    const check = setInterval(() => {
+      const t = !!getToken();
+      setHasToken((prev) => prev !== t ? t : prev);
+    }, 1000);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(check);
+    };
+  }, [getToken]);
 
   const sendNotify = useCallback(async (focusMs: number, distractMs: number) => {
     const token = getToken();
@@ -138,9 +157,14 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
   }, [sendNotify]);
 
   useEffect(() => {
-    if (!getToken()) return;
+    if (!hasToken) return;
     if (initialized.current) return;
     initialized.current = true;
+
+    // 重置会话起点（登录后从此刻开始计时）
+    startTime.current = Date.now();
+    distractTotal.current = 0;
+    distractStart.current = null;
 
     // 恢复历史数据
     const stored = loadStored();
@@ -222,7 +246,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
       clearInterval(timer);
       handleBeforeUnload(); // 组件卸载时也保存
     };
-  }, [getToken, markDistracted, markFocused, tick]);
+  }, [hasToken, getToken, markDistracted, markFocused, tick]);
 
   return (
     <FocusContext.Provider value={time}>
