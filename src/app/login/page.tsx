@@ -8,6 +8,8 @@ import Turnstile from "@/components/Turnstile";
 
 const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
+type CaptchaStatus = "loading" | "ready" | "error";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -15,6 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaStatus, setCaptchaStatus] = useState<CaptchaStatus>("loading");
 
   useEffect(() => {
     if (localStorage.getItem("token")) {
@@ -25,7 +28,16 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (TURNSTILE_ENABLED && !captchaToken) { setError("请先完成人机校验"); return; }
+    if (TURNSTILE_ENABLED) {
+      if (captchaStatus === "error") {
+        setError("人机校验加载失败，请刷新页面重试");
+        return;
+      }
+      if (!captchaToken) {
+        setError(captchaStatus === "loading" ? "人机校验加载中，请稍候" : "请先完成人机校验");
+        return;
+      }
+    }
     setLoading(true);
 
     try {
@@ -87,13 +99,17 @@ export default function LoginPage() {
             />
           </div>
 
-          <Turnstile onVerify={setCaptchaToken} onExpire={() => setCaptchaToken("")} />
+          <Turnstile
+            onVerify={setCaptchaToken}
+            onExpire={() => setCaptchaToken("")}
+            onStatusChange={setCaptchaStatus}
+          />
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (TURNSTILE_ENABLED && captchaStatus !== "ready")}
             className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? "登录中..." : "登录"}
