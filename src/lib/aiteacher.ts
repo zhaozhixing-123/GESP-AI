@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "./prisma";
 import { promptCache } from "./prompt-cache";
 
@@ -104,6 +103,22 @@ async function getWrongbookAnalysisPrompt(): Promise<string> {
       console.error("[AITeacher] 加载错题分析提示词失败:", e);
     }
     return DEFAULT_WRONGBOOK_ANALYSIS_PROMPT;
+  });
+}
+
+/** 从数据库加载模考诊断 System Prompt（带 TTL 缓存） */
+async function getExamReviewPrompt(): Promise<string> {
+  return promptCache.get("exam_review", async () => {
+    try {
+      const prompt = await prisma.prompt.findFirst({
+        where: { category: "exam_review" },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (prompt?.content) return prompt.content;
+    } catch (e) {
+      console.error("[AITeacher] 加载模考诊断提示词失败:", e);
+    }
+    return DEFAULT_EXAM_REVIEW_PROMPT;
   });
 }
 
@@ -450,11 +465,7 @@ export interface ExamProblemEntry {
   samplesTotal: number;
 }
 
-/** 模考诊断的 system prompt（完全静态，所有模考共享缓存） */
-const EXAM_REVIEW_SYSTEM: TextBlockParam[] = [
-  {
-    type: "text" as const,
-    text: `你是 GESP.AI 的模拟考试诊断老师。学生刚完成了一次模拟考试，请根据题目和学生提交的代码给出专业、鼓励性的诊断报告。
+export const DEFAULT_EXAM_REVIEW_PROMPT = `你是 GESP.AI 的模拟考试诊断老师。学生刚完成了一次模拟考试，请根据题目和学生提交的代码给出专业、鼓励性的诊断报告。
 
 报告结构（使用 Markdown 格式）：
 
@@ -476,10 +487,7 @@ const EXAM_REVIEW_SYSTEM: TextBlockParam[] = [
 写作要求：
 - 鼓励为主，先肯定优点再指出问题
 - 语言适合小学到初中学生
-- 不要给出完整的修改代码`,
-    cache_control: { type: "ephemeral" as const },
-  },
-];
+- 不要给出完整的修改代码`;
 
 /**
  * 模拟考试诊断报告（流式）
@@ -503,11 +511,19 @@ export async function streamExamReview(
 
   const userMessage = `考试用时：约 ${timeUsedMinutes} 分钟\n\n${problemSections}\n\n请生成诊断报告。`;
 
+  const systemText = await getExamReviewPrompt();
+
   console.log(`[ExamReview] 调用模型: ${AI_TEACHER_MODEL}`);
   const stream = await client.messages.stream({
     model: AI_TEACHER_MODEL,
     max_tokens: 4000,
-    system: EXAM_REVIEW_SYSTEM,
+    system: [
+      {
+        type: "text" as const,
+        text: systemText,
+        cache_control: { type: "ephemeral" as const },
+      },
+    ],
     messages: [{ role: "user", content: userMessage }],
   });
 

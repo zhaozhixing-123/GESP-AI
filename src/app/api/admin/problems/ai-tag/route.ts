@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { promptCache } from "@/lib/prompt-cache";
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -26,6 +27,25 @@ const GESP_TAGS = [
   // 通用
   "数学",
 ];
+
+export const DEFAULT_PROBLEM_AUTOTAG_PROMPT = `你是一个 GESP C++ 算法题分类助手。从以下标签中为题目选出最匹配的 1-3 个，优先选最核心的考察点。
+只输出一个 JSON 字符串数组，不要任何解释、标点或其他内容，例如：["动态规划"] 或 ["DFS","树"]。
+可用标签：{{gesp_tags}}`;
+
+async function getProblemAutotagPrompt(): Promise<string> {
+  return promptCache.get("problem_autotag", async () => {
+    try {
+      const prompt = await prisma.prompt.findFirst({
+        where: { category: "problem_autotag" },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (prompt?.content) return prompt.content;
+    } catch (e) {
+      console.error("[AITag] 加载自动打标提示词失败:", e);
+    }
+    return DEFAULT_PROBLEM_AUTOTAG_PROMPT;
+  });
+}
 
 /**
  * POST /api/admin/problems/ai-tag
@@ -59,12 +79,12 @@ export async function POST(request: NextRequest) {
       }
 
       // system prompt 提到循环外，200+ 次调用共享 Anthropic prompt cache
+      const template = await getProblemAutotagPrompt();
+      const systemText = template.replaceAll("{{gesp_tags}}", GESP_TAGS.join("、"));
       const systemBlocks = [
         {
           type: "text" as const,
-          text: `你是一个 GESP C++ 算法题分类助手。从以下标签中为题目选出最匹配的 1-3 个，优先选最核心的考察点。
-只输出一个 JSON 字符串数组，不要任何解释、标点或其他内容，例如：["动态规划"] 或 ["DFS","树"]。
-可用标签：${GESP_TAGS.join("、")}`,
+          text: systemText,
           cache_control: { type: "ephemeral" as const },
         },
       ];
