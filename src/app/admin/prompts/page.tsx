@@ -14,9 +14,6 @@ interface Prompt {
 const CATEGORIES = [
   { value: "system", label: "AI老师提示词" },
   { value: "wrongbook_analysis", label: "错题分析提示词" },
-  { value: "hint", label: "思路提示" },
-  { value: "error_analysis", label: "错误分析" },
-  { value: "step_guide", label: "分步引导" },
 ];
 
 const DEFAULT_WRONGBOOK_ANALYSIS_PROMPT = `你是GESP.AI的错题复盘老师，帮助学生从错误中提炼出可复用的编程经验。
