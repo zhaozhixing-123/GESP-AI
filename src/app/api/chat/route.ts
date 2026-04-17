@@ -27,7 +27,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    activeUsers.add(user.userId);
     const { problemId, variantId, message, code } = await request.json();
 
     if (!message?.trim()) {
@@ -66,15 +65,53 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const stream = await chat({
-      problemId: variantId ? undefined : parseInt(problemId),
-      variantId: variantId ? parseInt(variantId) : undefined,
-      userId:  user.userId,
-      message: message.trim(),
-      code,
+    // 锁在这里获取——此时所有校验已过，准备真正调用 AI
+    activeUsers.add(user.userId);
+    let lockReleased = false;
+    const releaseLock = () => {
+      if (lockReleased) return;
+      lockReleased = true;
+      activeUsers.delete(user.userId);
+    };
+
+    let stream: ReadableStream<Uint8Array>;
+    try {
+      stream = await chat({
+        problemId: variantId ? undefined : parseInt(problemId),
+        variantId: variantId ? parseInt(variantId) : undefined,
+        userId:  user.userId,
+        message: message.trim(),
+        code,
+      });
+    } catch (e) {
+      releaseLock();
+      throw e;
+    }
+
+    // 包一层 ReadableStream，流读完或被取消时才释放锁（否则 return 一瞬间就解锁了）
+    const reader = stream.getReader();
+    const wrapped = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+            releaseLock();
+          } else {
+            controller.enqueue(value);
+          }
+        } catch (err) {
+          releaseLock();
+          controller.error(err);
+        }
+      },
+      cancel(reason) {
+        releaseLock();
+        return reader.cancel(reason);
+      },
     });
 
-    return new Response(stream, {
+    return new Response(wrapped, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -83,9 +120,8 @@ export async function POST(request: NextRequest) {
     });
   } catch (e: any) {
     console.error("Chat error:", e);
-    return Response.json({ error: "对话失败，请重试" }, { status: 500 });
-  } finally {
     activeUsers.delete(user.userId);
+    return Response.json({ error: "对话失败，请重试" }, { status: 500 });
   }
 }
 

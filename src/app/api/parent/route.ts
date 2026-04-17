@@ -2,8 +2,12 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest, getJwtSecret } from "@/lib/auth";
 import { isValidWebhookUrl } from "@/lib/webhook";
+import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+
+// 家长密码校验：每用户/每 IP 每 10 分钟最多 5 次，防止暴力破解
+const PARENT_PW_RATE_LIMIT = { name: "parent_password", windowMs: 600_000, maxRequests: 5 };
 
 function getParentToken(request: NextRequest): string | null {
   return request.headers.get("x-parent-token");
@@ -23,6 +27,16 @@ function verifyParentToken(token: string): { userId: number } | null {
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
+
+  // 双维度限流：userId 和 IP 都要过，任一超限即拒绝
+  const userRl = checkRateLimit(PARENT_PW_RATE_LIMIT, `user_${user.userId}`);
+  const ipRl = checkRateLimit(PARENT_PW_RATE_LIMIT, `ip_${getClientIp(request)}`);
+  if (!userRl.allowed || !ipRl.allowed) {
+    return Response.json(
+      { error: "尝试次数过多，请稍后再试" },
+      { status: 429 }
+    );
+  }
 
   const { password } = await request.json();
   if (!password) return Response.json({ error: "请输入家长密码" }, { status: 400 });

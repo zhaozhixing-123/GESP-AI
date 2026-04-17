@@ -55,24 +55,39 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
 
-    // 更新订单
-    await prisma.order.update({
-      where: { orderNo },
-      data: { status: "paid", transactionId, paidAt: now },
+    // 用事务串行化：order paid 检查 + user 续期全原子，避免虎皮椒并发重试
+    // 导致同一单被多次叠加订阅时长
+    const newExpireAt = await prisma.$transaction(async (tx) => {
+      // 在事务里再读一次订单，确保幂等——两次并发回调只有先到的那次能更新
+      const fresh = await tx.order.findUnique({
+        where: { orderNo },
+        select: { status: true, userId: true, plan: true },
+      });
+      if (!fresh || fresh.status === "paid") return null;
+
+      await tx.order.update({
+        where: { orderNo },
+        data: { status: "paid", transactionId, paidAt: now },
+      });
+
+      const user = await tx.user.findUnique({
+        where: { id: fresh.userId },
+        select: { planExpireAt: true },
+      });
+      const expireAt = calculateExpireAt(user?.planExpireAt ?? null, fresh.plan);
+
+      await tx.user.update({
+        where: { id: fresh.userId },
+        data: { plan: fresh.plan, planExpireAt: expireAt },
+      });
+
+      return expireAt;
     });
 
-    // 更新用户订阅（支持续费叠加）
-    const user = await prisma.user.findUnique({
-      where: { id: order.userId },
-      select: { planExpireAt: true },
-    });
-
-    const newExpireAt = calculateExpireAt(user?.planExpireAt ?? null, order.plan);
-
-    await prisma.user.update({
-      where: { id: order.userId },
-      data: { plan: order.plan, planExpireAt: newExpireAt },
-    });
+    if (!newExpireAt) {
+      // 在事务内发现已是 paid，幂等返回
+      return new Response("success");
+    }
 
     console.log(`[Payment/Notify] 支付成功 orderNo=${orderNo} userId=${order.userId} expireAt=${newExpireAt}`);
     return new Response("success");

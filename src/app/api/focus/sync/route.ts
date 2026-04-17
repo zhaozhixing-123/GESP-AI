@@ -16,6 +16,11 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "参数不完整" }, { status: 400 });
     }
 
+    // date 作为复合主键的一部分，必须严格 YYYY-MM-DD，否则脏数据难以清理
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return Response.json({ error: "date 格式应为 YYYY-MM-DD" }, { status: 400 });
+    }
+
     // 防止篡改：上限 24 小时
     const maxMs = 24 * 3600_000;
     const safeFocus = Math.max(0, Math.min(focusMs, maxMs));
@@ -50,7 +55,9 @@ export async function GET(request: NextRequest) {
   if (!payload) return Response.json({ error: "登录已过期" }, { status: 401 });
 
   const date = request.nextUrl.searchParams.get("date");
-  if (!date) return Response.json({ error: "date required" }, { status: 400 });
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return Response.json({ error: "date 格式应为 YYYY-MM-DD" }, { status: 400 });
+  }
 
   const log = await prisma.dailyFocusLog.findUnique({
     where: { userId_date: { userId: payload.userId, date } },

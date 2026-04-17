@@ -29,13 +29,15 @@ export function xunhuSign(
   return crypto.createHash("md5").update(str + appSecret).digest("hex");
 }
 
-/** 验证虎皮椒回调签名 */
+/** 验证虎皮椒回调签名（用 timingSafeEqual，避免早退比较带来的时序侧信道） */
 export function verifyXunhuSign(
   params: Record<string, string>,
   appSecret: string
 ): boolean {
   const expected = xunhuSign(params, appSecret);
-  return params.hash === expected;
+  const actual = params.hash ?? "";
+  if (actual.length !== expected.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
 }
 
 function randomStr(len: number): string {

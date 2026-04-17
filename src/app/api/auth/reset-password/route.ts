@@ -14,11 +14,14 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "操作过于频繁，请稍后再试" }, { status: 429 });
     }
 
-    const { email, code, newPassword } = await request.json();
+    const { email: rawEmail, code, newPassword } = await request.json();
 
-    if (!email || !code || !newPassword) {
+    if (!rawEmail || !code || !newPassword) {
       return Response.json({ error: "参数不完整" }, { status: 400 });
     }
+
+    // 归一化邮箱，与 send-code/register 保持一致
+    const email = String(rawEmail).trim().toLowerCase();
 
     if (newPassword.length < 6) {
       return Response.json({ error: "密码长度至少 6 个字符" }, { status: 400 });

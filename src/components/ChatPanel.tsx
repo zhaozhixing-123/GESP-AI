@@ -38,26 +38,36 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // 加载聊天历史
+  // 加载聊天历史：problemId/variantId 切换时要重新拉；
+  // 组件卸载或切题时通过 AbortController 取消 in-flight 请求，避免卸载后 setState
   useEffect(() => {
+    const controller = new AbortController();
     async function loadHistory() {
       const historyQuery = variantId ? `variantId=${variantId}` : `problemId=${problemId}`;
-      const res = await fetch(`/api/chat?${historyQuery}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
+      try {
+        const res = await fetch(`/api/chat?${historyQuery}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
         const data = await res.json();
+        if (controller.signal.aborted) return;
         const history = data.messages || [];
         setMessages(history);
-        // 聊天记录为空且有 initialMessage 时，自动触发一次分析
         if (history.length === 0 && initialMessage && !initialSentRef.current) {
           initialSentRef.current = true;
           sendMessage(initialMessage);
         }
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        // 其他错误静默：UI 层保持空聊天列表即可
       }
     }
     loadHistory();
-  }, [problemId]);
+    return () => controller.abort();
+  // sendMessage/initialMessage 故意排除——变化会导致无限循环
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problemId, variantId]);
 
   // 自动滚动到底部
   useEffect(() => {

@@ -13,6 +13,15 @@ export async function POST(request: NextRequest) {
   try {
     const { focusMinutes, distractMinutes } = await request.json();
 
+    if (
+      typeof focusMinutes !== "number" || !Number.isFinite(focusMinutes) ||
+      focusMinutes < 0 || focusMinutes > 1440 ||
+      typeof distractMinutes !== "number" || !Number.isFinite(distractMinutes) ||
+      distractMinutes < 0 || distractMinutes > 1440
+    ) {
+      return Response.json({ error: "参数不合法" }, { status: 400 });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: { nickname: true, feishuWebhook: true },

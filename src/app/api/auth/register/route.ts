@@ -17,12 +17,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, code, nickname, password, targetLevel, examDate, phone } =
+    const { email: rawEmail, code, nickname, password, targetLevel, examDate, phone } =
       await request.json();
 
-    if (!email || !code || !nickname || !password) {
+    if (!rawEmail || !code || !nickname || !password) {
       return Response.json({ error: "必填项不能为空" }, { status: 400 });
     }
+
+    // 归一化邮箱（去空格 + 转小写），确保与 send-code/login 记录一致
+    const email = String(rawEmail).trim().toLowerCase();
 
     // 邮箱格式校验
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -86,7 +89,7 @@ export async function POST(request: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Admin 由环境变量 INITIAL_ADMIN_EMAIL 指定，而非自动授予首个注册用户
-    const ADMIN_EMAIL = process.env.INITIAL_ADMIN_EMAIL;
+    const ADMIN_EMAIL = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
     const isAdmin = !!ADMIN_EMAIL && email === ADMIN_EMAIL;
     const role = isAdmin ? "admin" : "user";
 

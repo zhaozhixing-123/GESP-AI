@@ -17,11 +17,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password } = await request.json();
+    const { email: rawEmail, password } = await request.json();
 
-    if (!email || !password) {
+    if (!rawEmail || !password) {
       return Response.json({ error: "邮箱和密码不能为空" }, { status: 400 });
     }
+
+    // 归一化邮箱，保证注册/登录使用同一键
+    const email = String(rawEmail).trim().toLowerCase();
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {

@@ -3,14 +3,24 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { PLAN_AMOUNTS, createXunhuOrder } from "@/lib/xunhu";
+import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
 
 const VALID_PLANS = ["monthly", "quarterly", "yearly"] as const;
 type Plan = (typeof VALID_PLANS)[number];
+
+const CREATE_RATE_LIMIT = { name: "payment_create", windowMs: 600_000, maxRequests: 20 };
 
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  // 双维度限流，防止 userId 或 IP 任一被用来刷单
+  const userRl = checkRateLimit(CREATE_RATE_LIMIT, `user_${user.userId}`);
+  const ipRl = checkRateLimit(CREATE_RATE_LIMIT, `ip_${getClientIp(request)}`);
+  if (!userRl.allowed || !ipRl.allowed) {
+    return Response.json({ error: "下单请求过于频繁，请稍后再试" }, { status: 429 });
   }
 
   const body = await request.json().catch(() => ({}));

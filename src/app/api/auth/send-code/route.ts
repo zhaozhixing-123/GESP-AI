@@ -15,15 +15,18 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
     }
 
-    const { email, type } = await request.json();
+    const { email: rawEmail, type } = await request.json();
 
-    if (!email || !type) {
+    if (!rawEmail || !type) {
       return Response.json({ error: "参数不完整" }, { status: 400 });
     }
 
     if (!["register", "reset_password"].includes(type)) {
       return Response.json({ error: "无效的验证类型" }, { status: 400 });
     }
+
+    // 归一化邮箱（去空格 + 转小写），后续所有存取都用归一化后的值
+    const email = String(rawEmail).trim().toLowerCase();
 
     // 邮箱格式校验
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

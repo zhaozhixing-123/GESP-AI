@@ -251,8 +251,9 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
   const staticSystem = await buildChatSystemPrompt(ctx.problemId, ctx.variantId);
   const history = await loadChatHistory(ctx.userId, ctx.problemId, ctx.variantId);
 
-  // 保存用户消息
-  await prisma.chatHistory.create({
+  // 保存用户消息；如果后续 AI 调用失败，需要回滚这条记录，
+  // 否则下次对话 Claude 会看到孤立的 user 消息。
+  const userMsg = await prisma.chatHistory.create({
     data: {
       userId:    ctx.userId,
       problemId: ctx.variantId ? null : ctx.problemId,
@@ -317,7 +318,13 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
         controller.close();
       } catch (e: any) {
         console.error("[AITeacher] Stream error:", e);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e.message })}\n\n`));
+        // 回滚刚才保存的 user 消息，避免孤立记录污染后续对话上下文
+        try {
+          await prisma.chatHistory.delete({ where: { id: userMsg.id } });
+        } catch (delErr) {
+          console.error("[AITeacher] 回滚 user 消息失败:", delErr);
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI 服务暂时不可用，请稍后再试" })}\n\n`));
         controller.close();
       }
     },
@@ -428,7 +435,7 @@ export async function streamWrongCodeAnalysis({
         controller.close();
       } catch (e: any) {
         console.error("[WrongbookAnalysis] Stream error:", e);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e.message })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI 服务暂时不可用，请稍后再试" })}\n\n`));
         controller.close();
       }
     },
@@ -517,7 +524,7 @@ export async function streamExamReview(
         controller.close();
       } catch (e: any) {
         console.error("[ExamReview] Stream error:", e);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e.message })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI 服务暂时不可用，请稍后再试" })}\n\n`));
         controller.close();
       }
     },

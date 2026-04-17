@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
-import { checkFreeLimit } from "@/lib/subscription";
+import { checkFreeLimit, getSubscriptionInfo } from "@/lib/subscription";
 import { judgeAll, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
 
@@ -155,17 +155,20 @@ export async function POST(request: NextRequest) {
       });
 
       // 付费用户：解锁该题 batch1 变形题（幂等，重复触发无副作用）
-      const hasVariants = await prisma.variantProblem.count({
-        where: { sourceId: parseInt(problemId), genStatus: "ready" },
-      });
-      if (hasVariants > 0) {
-        await prisma.variantUnlock.upsert({
-          where: {
-            userId_problemId_batch: { userId: user.userId, problemId: parseInt(problemId), batch: 1 },
-          },
-          update: {},
-          create: { userId: user.userId, problemId: parseInt(problemId), batch: 1 },
+      const sub = await getSubscriptionInfo(user.userId);
+      if (sub.isPaid) {
+        const hasVariants = await prisma.variantProblem.count({
+          where: { sourceId: parseInt(problemId), genStatus: "ready" },
         });
+        if (hasVariants > 0) {
+          await prisma.variantUnlock.upsert({
+            where: {
+              userId_problemId_batch: { userId: user.userId, problemId: parseInt(problemId), batch: 1 },
+            },
+            update: {},
+            create: { userId: user.userId, problemId: parseInt(problemId), batch: 1 },
+          });
+        }
       }
     }
 

@@ -4,11 +4,19 @@ import { getUserFromRequest } from "@/lib/auth";
 import { checkFreeLimit } from "@/lib/subscription";
 import { judgeAll, judgeCode, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+const RUN_RATE_LIMIT = { name: "code_run", windowMs: 60_000, maxRequests: 10 };
 
 export async function POST(request: NextRequest) {
   const user = getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  const rl = checkRateLimit(RUN_RATE_LIMIT, `user_${user.userId}`);
+  if (!rl.allowed) {
+    return Response.json({ error: "运行请求过于频繁，请稍后再试" }, { status: 429 });
   }
 
   try {

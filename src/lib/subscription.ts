@@ -99,8 +99,7 @@ export function calculateExpireAt(
     case "quarterly":
       return addMonths(base, 3);
     case "yearly":
-      base.setFullYear(base.getFullYear() + 1);
-      return base;
+      return addMonths(base, 12);
     default:
       return base;
   }
