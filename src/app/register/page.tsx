@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Turnstile from "@/components/Turnstile";
 
 type Step = "email" | "info";
+
+const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,6 +19,7 @@ export default function RegisterPage() {
   const [codeSent, setCodeSent] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   // 第二步
   const [nickname, setNickname] = useState("");
@@ -31,13 +35,14 @@ export default function RegisterPage() {
   async function handleSendCode() {
     setError("");
     if (!email) { setError("请输入邮箱"); return; }
+    if (TURNSTILE_ENABLED && !captchaToken) { setError("请先完成人机校验"); return; }
 
     setSendingCode(true);
     try {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "register" }),
+        body: JSON.stringify({ email, type: "register", turnstileToken: captchaToken }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "发送失败"); return; }
@@ -150,6 +155,8 @@ export default function RegisterPage() {
                 />
               </div>
             )}
+
+            <Turnstile onVerify={setCaptchaToken} onExpire={() => setCaptchaToken("")} />
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 

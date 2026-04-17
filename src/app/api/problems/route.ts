@@ -1,9 +1,21 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
+
+const LIST_RATE_LIMIT = { name: "problems_list", windowMs: 60_000, maxRequests: 30 };
 
 export async function GET(request: NextRequest) {
   try {
+    const ip = getClientIp(request);
+    const rl = checkRateLimit(LIST_RATE_LIMIT, ip);
+    if (!rl.allowed) {
+      return Response.json(
+        { error: "请求过于频繁，请稍后再试" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+      );
+    }
+
     const url = new URL(request.url);
     const level = url.searchParams.get("level");
     const search = url.searchParams.get("search")?.trim();

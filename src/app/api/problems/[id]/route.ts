@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { checkFreeLimit } from "@/lib/subscription";
+import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
+
+const DETAIL_RATE_LIMIT = { name: "problems_detail", windowMs: 60_000, maxRequests: 60 };
 
 async function handleVariantGet(userId: number, variantId: number, isAdmin: boolean): Promise<Response> {
   if (isNaN(variantId)) return Response.json({ error: "无效变形题 ID" }, { status: 404 });
@@ -55,6 +58,16 @@ export async function GET(
   const user = getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  const userRl = checkRateLimit(DETAIL_RATE_LIMIT, `user_${user.userId}`);
+  const ipRl = checkRateLimit(DETAIL_RATE_LIMIT, `ip_${getClientIp(request)}`);
+  if (!userRl.allowed || !ipRl.allowed) {
+    const retryAfterMs = Math.max(userRl.retryAfterMs, ipRl.retryAfterMs);
+    return Response.json(
+      { error: "请求过于频繁，请稍后再试" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) } }
+    );
   }
 
   try {
