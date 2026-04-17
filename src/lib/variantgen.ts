@@ -5,7 +5,7 @@ import { normalizeOutput } from "./normalize";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const VARIANTGEN_MODEL = "claude-sonnet-4-6";
-const FALLBACK_MODEL = "claude-opus-4-6";
+const FALLBACK_MODEL = "claude-opus-4-7";
 const MAX_RETRIES = 3;
 
 interface SourceProblem {

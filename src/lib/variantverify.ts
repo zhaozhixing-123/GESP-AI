@@ -4,7 +4,7 @@ import { normalizeOutput } from "./normalize";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const VERIFY_MODEL = "claude-opus-4-6";
+const VERIFY_MODEL = "claude-opus-4-7";
 const MAX_SOLUTION_RETRIES = 3;
 
 interface VariantProblem {

@@ -4,8 +4,8 @@ import { normalizeOutput } from "./normalize";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export const VERIFY_MODEL = "claude-opus-4-6";
-export const VERIFY_MODEL_DISPLAY = "Claude Opus 4.6";
+export const VERIFY_MODEL = "claude-opus-4-7";
+export const VERIFY_MODEL_DISPLAY = "Claude Opus 4.7";
 
 interface Problem {
   title: string;

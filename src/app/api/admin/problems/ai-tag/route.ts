@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         const { id, luoguId, title, description } = problems[i];
         try {
           const msg = await client.messages.create({
-            model: "claude-opus-4-6",
+            model: "claude-opus-4-7",
             max_tokens: 64,
             system: systemBlocks,
             messages: [{

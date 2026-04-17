@@ -5,8 +5,8 @@ import { promptCache } from "./prompt-cache";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export const AI_TEACHER_MODEL = "claude-opus-4-6";
-export const AI_TEACHER_MODEL_DISPLAY = "Claude Opus 4.6";
+export const AI_TEACHER_MODEL = "claude-opus-4-7";
+export const AI_TEACHER_MODEL_DISPLAY = "Claude Opus 4.7";
 
 export const DEFAULT_WRONGBOOK_ANALYSIS_PROMPT = `你是GESP.AI的错题复盘老师，帮助学生从错误中提炼出可复用的编程经验。
 

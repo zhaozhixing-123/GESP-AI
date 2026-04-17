@@ -7,7 +7,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const TESTGEN_MODEL = "claude-sonnet-4-6";
 export const TESTGEN_MODEL_DISPLAY = "Claude Sonnet 4.6";
 
-const FALLBACK_MODEL = "claude-opus-4-6";
+const FALLBACK_MODEL = "claude-opus-4-7";
 const MAX_RETRIES = 3;
 
 interface Problem {
