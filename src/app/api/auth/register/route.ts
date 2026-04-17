@@ -54,14 +54,20 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "密码需要同时包含字母和数字" }, { status: 400 });
     }
 
-    if (!targetLevel || targetLevel < 3 || targetLevel > 8) {
-      return Response.json(
-        { error: "请选择目标考试级别（3-8 级）" },
-        { status: 400 }
-      );
+    const hasTargetLevel = targetLevel !== undefined && targetLevel !== null && targetLevel !== "";
+    if (hasTargetLevel) {
+      const lvl = parseInt(String(targetLevel));
+      if (isNaN(lvl) || lvl < 3 || lvl > 8) {
+        return Response.json(
+          { error: "目标考试级别需为 3-8" },
+          { status: 400 }
+        );
+      }
     }
-    if (!examDate) {
-      return Response.json({ error: "请选择目标考试日期" }, { status: 400 });
+    if (examDate) {
+      if (isNaN(new Date(examDate).getTime())) {
+        return Response.json({ error: "目标考试日期格式不正确" }, { status: 400 });
+      }
     }
 
     // 校验邮箱验证码（原子操作：匹配+标记已使用一步完成）
@@ -100,8 +106,8 @@ export async function POST(request: NextRequest) {
         nickname,
         passwordHash,
         role,
-        targetLevel: parseInt(String(targetLevel)),
-        examDate: new Date(examDate),
+        targetLevel: hasTargetLevel ? parseInt(String(targetLevel)) : null,
+        examDate: examDate ? new Date(examDate) : null,
         phone: phone?.trim() || null,
         plan: isAdmin ? "yearly" : "free",
         planExpireAt: isAdmin ? new Date("2099-12-31") : null,

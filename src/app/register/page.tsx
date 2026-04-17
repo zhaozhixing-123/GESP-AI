@@ -89,8 +89,8 @@ export default function RegisterPage() {
           code,
           nickname,
           password,
-          targetLevel: parseInt(targetLevel),
-          examDate,
+          targetLevel: targetLevel ? parseInt(targetLevel) : undefined,
+          examDate: examDate || undefined,
           phone: phone || undefined,
         }),
       });
@@ -218,15 +218,14 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                目标考试级别 <span className="text-red-500">*</span>
+                目标考试级别 <span className="text-gray-400 font-normal">（选填）</span>
               </label>
               <select
                 value={targetLevel}
                 onChange={(e) => setTargetLevel(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                required
               >
-                <option value="">请选择级别</option>
+                <option value="">暂不选择</option>
                 {[3, 4, 5, 6, 7, 8].map((l) => (
                   <option key={l} value={l}>{l} 级</option>
                 ))}
@@ -235,14 +234,13 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                目标考试日期 <span className="text-red-500">*</span>
+                目标考试日期 <span className="text-gray-400 font-normal">（选填）</span>
               </label>
               <input
                 type="date"
                 value={examDate}
                 onChange={(e) => setExamDate(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                required
               />
             </div>
 
