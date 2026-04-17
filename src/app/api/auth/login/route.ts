@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
-import { verifyTurnstile } from "@/lib/turnstile";
 
 const LOGIN_RATE_LIMIT = { name: "login", windowMs: 60_000, maxRequests: 10 };
 
@@ -18,15 +17,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email: rawEmail, password, turnstileToken } = await request.json();
+    const { email: rawEmail, password } = await request.json();
 
     if (!rawEmail || !password) {
       return Response.json({ error: "邮箱和密码不能为空" }, { status: 400 });
-    }
-
-    const captchaOk = await verifyTurnstile(turnstileToken, ip);
-    if (!captchaOk) {
-      return Response.json({ error: "人机校验失败，请刷新后重试" }, { status: 400 });
     }
 
     // 归一化邮箱，保证注册/登录使用同一键

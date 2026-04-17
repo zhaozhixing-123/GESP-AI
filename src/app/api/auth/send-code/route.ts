@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCode, sendVerificationEmail } from "@/lib/email";
 import { checkRateLimit, getClientIp } from "@/lib/ratelimit";
-import { verifyTurnstile } from "@/lib/turnstile";
 
 const IP_RATE_LIMIT = { name: "send_code_ip", windowMs: 60_000, maxRequests: 5 };
 const EMAIL_RATE_LIMIT = { name: "send_code_email", windowMs: 60_000, maxRequests: 1 };
@@ -16,7 +15,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "请求过于频繁，请稍后再试" }, { status: 429 });
     }
 
-    const { email: rawEmail, type, turnstileToken } = await request.json();
+    const { email: rawEmail, type } = await request.json();
 
     if (!rawEmail || !type) {
       return Response.json({ error: "参数不完整" }, { status: 400 });
@@ -24,11 +23,6 @@ export async function POST(request: NextRequest) {
 
     if (!["register", "reset_password"].includes(type)) {
       return Response.json({ error: "无效的验证类型" }, { status: 400 });
-    }
-
-    const captchaOk = await verifyTurnstile(turnstileToken, ip);
-    if (!captchaOk) {
-      return Response.json({ error: "人机校验失败，请刷新后重试" }, { status: 400 });
     }
 
     // 归一化邮箱（去空格 + 转小写），后续所有存取都用归一化后的值

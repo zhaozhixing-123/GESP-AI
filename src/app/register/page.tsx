@@ -3,12 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Turnstile from "@/components/Turnstile";
 
 type Step = "email" | "info";
-type CaptchaStatus = "loading" | "ready" | "error";
-
-const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -20,8 +16,6 @@ export default function RegisterPage() {
   const [codeSent, setCodeSent] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [captchaToken, setCaptchaToken] = useState("");
-  const [captchaStatus, setCaptchaStatus] = useState<CaptchaStatus>("loading");
 
   // 第二步
   const [nickname, setNickname] = useState("");
@@ -37,20 +31,13 @@ export default function RegisterPage() {
   async function handleSendCode() {
     setError("");
     if (!email) { setError("请输入邮箱"); return; }
-    if (TURNSTILE_ENABLED) {
-      if (captchaStatus === "error") { setError("人机校验加载失败，请刷新页面重试"); return; }
-      if (!captchaToken) {
-        setError(captchaStatus === "loading" ? "人机校验加载中，请稍候" : "请先完成人机校验");
-        return;
-      }
-    }
 
     setSendingCode(true);
     try {
       const res = await fetch("/api/auth/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, type: "register", turnstileToken: captchaToken }),
+        body: JSON.stringify({ email, type: "register" }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "发送失败"); return; }
@@ -142,7 +129,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={handleSendCode}
-                  disabled={sendingCode || countdown > 0 || (TURNSTILE_ENABLED && captchaStatus !== "ready")}
+                  disabled={sendingCode || countdown > 0}
                   className="flex-shrink-0 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {countdown > 0 ? `${countdown}s` : sendingCode ? "发送中..." : "发送验证码"}
@@ -163,12 +150,6 @@ export default function RegisterPage() {
                 />
               </div>
             )}
-
-            <Turnstile
-              onVerify={setCaptchaToken}
-              onExpire={() => setCaptchaToken("")}
-              onStatusChange={setCaptchaStatus}
-            />
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 
