@@ -15,6 +15,7 @@ interface CodeEditorProps {
   onChange: (value: string) => void;
   height?: string;
   onSelectionChange?: (selected: string) => void;
+  readOnly?: boolean;
 }
 
 const DEFAULT_CODE = `#include <iostream>
@@ -27,7 +28,7 @@ int main() {
 
 export { DEFAULT_CODE };
 
-export default function CodeEditor({ value, onChange, height = "400px", onSelectionChange }: CodeEditorProps) {
+export default function CodeEditor({ value, onChange, height = "400px", onSelectionChange, readOnly = false }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
@@ -78,6 +79,7 @@ export default function CodeEditor({ value, onChange, height = "400px", onSelect
           wordWrap: "on",
           tabSize: 4,
           automaticLayout: true,
+          readOnly,
         }}
       />
     </div>

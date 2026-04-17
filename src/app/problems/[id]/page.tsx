@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import CodeEditor, { DEFAULT_CODE } from "@/components/CodeEditor";
 import ChatPanel from "@/components/ChatPanel";
+import SubmissionDetailModal from "@/components/SubmissionDetailModal";
+import { STATUS_COLORS, STATUS_TEXT } from "@/lib/submission-status";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -79,24 +81,6 @@ const LEVEL_COLORS: Record<number, string> = {
   8: "bg-red-100 text-red-700",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  AC: "text-green-600",
-  WA: "text-red-600",
-  TLE: "text-orange-600",
-  CE: "text-yellow-600",
-  RE: "text-purple-600",
-  MLE: "text-orange-600",
-};
-
-const STATUS_TEXT: Record<string, string> = {
-  AC: "AC 通过",
-  WA: "WA 答案错误",
-  TLE: "TLE 超时",
-  CE: "CE 编译错误",
-  RE: "RE 运行错误",
-  MLE: "MLE 内存超限",
-};
-
 function MdContent({ children }: { children: string }) {
   return (
     <div className="prose prose-sm max-w-none text-gray-700 prose-table:border-collapse prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-1.5 prose-th:bg-gray-50 prose-td:border prose-td:border-gray-300 prose-td:px-3 prose-td:py-1.5">
@@ -138,6 +122,18 @@ export default function ProblemDetailPage() {
   // 代码选中 & 外部触发聊天
   const [selectedCode, setSelectedCode] = useState("");
   const [chatTrigger, setChatTrigger] = useState<{ text: string; code?: string; nonce: number } | undefined>();
+
+  // 查看历史提交
+  const [viewingSubmissionId, setViewingSubmissionId] = useState<number | null>(null);
+
+  function handleLoadSubmission(oldCode: string) {
+    // 仅当编辑器里已经有非默认内容时才二次确认，避免误覆盖
+    const current = code.trim();
+    const isDirty = current !== "" && current !== DEFAULT_CODE.trim();
+    if (isDirty && !confirm("当前编辑器内容会被覆盖，确认载入？")) return;
+    setCode(oldCode);
+    setViewingSubmissionId(null);
+  }
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -787,7 +783,7 @@ export default function ProblemDetailPage() {
                             <span className={`font-bold ${STATUS_COLORS[s.status] || "text-gray-600"}`}>
                               {STATUS_TEXT[s.status] || s.status}
                             </span>
-                            <div className="flex gap-3 text-xs text-gray-400">
+                            <div className="flex items-center gap-3 text-xs text-gray-400">
                               {s.timeUsed != null && <span>{s.timeUsed}ms</span>}
                               {s.memoryUsed != null && <span>{s.memoryUsed}KB</span>}
                               <span>
@@ -795,6 +791,12 @@ export default function ProblemDetailPage() {
                                   month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
                                 })}
                               </span>
+                              <button
+                                onClick={() => setViewingSubmissionId(s.id)}
+                                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+                              >
+                                查看代码
+                              </button>
                             </div>
                           </div>
                         ))}
@@ -816,6 +818,15 @@ export default function ProblemDetailPage() {
           </div>
         </div>
       </div>
+
+      {viewingSubmissionId !== null && (
+        <SubmissionDetailModal
+          submissionId={viewingSubmissionId}
+          variant={isVariantPage}
+          onClose={() => setViewingSubmissionId(null)}
+          onLoad={handleLoadSubmission}
+        />
+      )}
     </div>
   );
 }
