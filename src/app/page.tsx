@@ -234,65 +234,62 @@ export default function LandingPage() {
 
           {/* 主标题 */}
           <h1
-            className="mt-4 text-[clamp(2rem,5vw,3.25rem)] font-black leading-tight tracking-tight"
+            className="mt-4 text-[clamp(2.25rem,6vw,3.75rem)] font-black leading-tight tracking-tight"
             style={{ fontFamily: "'Noto Serif SC', serif" }}
           >
             告别题海，自学成才
           </h1>
 
-          {/* 三短句 */}
-          <p className="mx-auto mt-6 max-w-xl text-[clamp(0.875rem,2vw,1.0625rem)] leading-relaxed text-[#666]">
-            不给答案，引导孩子自己想通 · 基于孩子的数据个性化训练 · 24小时在线
+          {/* 副标题 */}
+          <p className="mx-auto mt-6 max-w-xl text-[clamp(0.9375rem,2vw,1.125rem)] leading-relaxed text-[#666]">
+            专为备考 GESP 1-8 级的家庭而设计
           </p>
 
-          {/* 数据条 */}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm font-medium text-[#1d5bd6]">
-            <span>200+ 真题</span>
-            <span className="text-[#ccc]">·</span>
-            <span>800+ AI 变形题</span>
-            <span className="text-[#ccc]">·</span>
-            <span>1-8 级全覆盖</span>
-          </div>
-
           {/* CTA */}
-          <div className="mt-10">
+          <div className="mt-12">
             <Link
               href={REGISTER_URL}
               className="inline-block rounded-xl bg-[#1d5bd6] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[#1d5bd6]/20 transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#1d5bd6]/30"
             >
-              开始使用
+              让孩子开始自学
             </Link>
-            <p className="mt-4">
+            <p className="mt-3 text-xs text-[#999]">免费体验一道真题</p>
+            <p className="mt-6">
               <Link href="/story" className="text-sm text-[#1d5bd6] hover:underline">
-                了解赵知行的故事 →
+                赵知行的故事 →
               </Link>
             </p>
           </div>
         </div>
-
-        {/* 向下滚动提示 */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-[#aaa] animate-bounce">
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xs">往下看</span>
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-            </svg>
-          </div>
-        </div>
       </section>
 
-      {/* ── 第二屏 创始人原话 ───────────────────────────────────────────── */}
-      <section className="bg-[#f7f5f0] px-6 py-12 md:py-16">
-        <div className="mx-auto max-w-[640px] text-center">
+      {/* ── 第二屏 自学的定义 ───────────────────────────────────────────── */}
+      <section className="bg-[#f7f5f0] px-6 py-24 md:py-32">
+        <div className="mx-auto max-w-[680px] text-center">
           <div ref={fadeQuote.ref} className={fadeQuote.className}>
-            <blockquote
-              className="text-xl leading-relaxed text-[#333] sm:text-2xl"
+            <h2
+              className="text-[clamp(1.75rem,4vw,2.5rem)] font-bold leading-tight tracking-tight text-[#0c1524]"
               style={{ fontFamily: "'Noto Serif SC', serif" }}
             >
-              &ldquo;效率提升了5到10倍。原来一道题卡住就会浪费很多时间和情绪，会感到烦躁和无助。现在少走很多弯路。&rdquo;
+              自学，不是让孩子一个人学
+            </h2>
+
+            <blockquote
+              className="mt-16 text-xl leading-relaxed text-[#333] sm:text-2xl"
+              style={{ fontFamily: "'Noto Serif SC', serif" }}
+            >
+              &ldquo;原来一道题卡住，
+              <br />
+              就会浪费很多时间和情绪，
+              <br />
+              会感到烦躁和无助。&rdquo;
             </blockquote>
-            <p className="mt-6 text-sm text-[#999]">
-              赵知行，GESP.AI 创始人 · 小学五年级
+            <p className="mt-8 text-sm text-[#999]">
+              —— 赵知行，GESP.AI 创始人 · 小学五年级
+            </p>
+
+            <p className="mt-20 text-sm text-[#aaa]">
+              ↓ 后来，他创造了 GESP.AI
             </p>
           </div>
         </div>
