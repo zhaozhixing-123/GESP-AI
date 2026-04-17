@@ -1,12 +1,53 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
 import { normalizeOutput } from "./normalize";
+import { prisma } from "./prisma";
+import { promptCache } from "./prompt-cache";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const VARIANTGEN_MODEL = "claude-sonnet-4-6";
 const FALLBACK_MODEL = "claude-opus-4-7";
 const MAX_RETRIES = 3;
+
+export const DEFAULT_VARIANTGEN_PROBLEM_PROMPT = `你是一名 GESP 算法竞赛出题人，请根据下面的原题，设计一道"变形题"。
+
+## 原题信息
+{{source_context}}
+{{avoid_section}}
+## 变形题要求
+1. **保持相同的算法思路和知识点**，但改变题目的情境、故事背景、变量名称，以及部分数值参数
+2. 难度和 GESP 级别保持不变（{{level}} 级）
+3. 提供 2~3 组样例输入（sampleInputs），**不需要提供输出**，输出由程序自动计算
+4. 输入输出格式可以调整，但整体复杂度相近
+5. 题目描述完整，不能引用原题，不能出现"原题"等字眼
+
+请调用 submit_variant 工具提交你的变形题。`;
+
+export const DEFAULT_VARIANTGEN_SOLUTION_PROMPT = `请根据以下题目写一个完整正确的 C++ 解法。
+
+## 题目
+**标题**: {{title}}
+**描述**: {{description}}
+**输入格式**: {{input_format}}
+**输出格式**: {{output_format}}
+
+请调用 submit_solution 工具提交代码。`;
+
+async function loadPrompt(category: string, fallback: string): Promise<string> {
+  return promptCache.get(category, async () => {
+    try {
+      const p = await prisma.prompt.findFirst({
+        where: { category },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (p?.content) return p.content;
+    } catch (e) {
+      console.error(`[VariantGen] 加载提示词 ${category} 失败:`, e);
+    }
+    return fallback;
+  });
+}
 
 interface SourceProblem {
   title: string;
@@ -57,19 +98,11 @@ async function callGenerateVariant(
     ? `\n## 已有变形题（必须与这些完全不同）\n${existingTitles.map((t, i) => `${i + 1}. 《${t}》`).join("\n")}\n**要求**：情境、故事背景、数值参数必须与上述所有已有变形题明显不同，禁止重复使用相同的主题或场景。\n`
     : "";
 
-  const prompt = `你是一名 GESP 算法竞赛出题人，请根据下面的原题，设计一道"变形题"。
-
-## 原题信息
-${buildSourceContext(source)}
-${avoidSection}
-## 变形题要求
-1. **保持相同的算法思路和知识点**，但改变题目的情境、故事背景、变量名称，以及部分数值参数
-2. 难度和 GESP 级别保持不变（${source.level} 级）
-3. 提供 2~3 组样例输入（sampleInputs），**不需要提供输出**，输出由程序自动计算
-4. 输入输出格式可以调整，但整体复杂度相近
-5. 题目描述完整，不能引用原题，不能出现"原题"等字眼
-
-请调用 submit_variant 工具提交你的变形题。`;
+  const template = await loadPrompt("variantgen_problem", DEFAULT_VARIANTGEN_PROBLEM_PROMPT);
+  const prompt = template
+    .replaceAll("{{source_context}}", buildSourceContext(source))
+    .replaceAll("{{avoid_section}}", avoidSection)
+    .replaceAll("{{level}}", String(source.level));
 
   console.log(`[VariantGen] 生成题面，模型: ${model}`);
   const response = await client.messages.stream({
@@ -146,15 +179,12 @@ async function computeSampleOutputs(draft: VariantDraft, model: string): Promise
   const samples: Array<{ input: string; output: string }> = JSON.parse(draft.samples);
 
   // 让 AI 根据题面写一个正确解法
-  const prompt = `请根据以下题目写一个完整正确的 C++ 解法。
-
-## 题目
-**标题**: ${draft.title}
-**描述**: ${draft.description}
-**输入格式**: ${draft.inputFormat}
-**输出格式**: ${draft.outputFormat}
-
-请调用 submit_solution 工具提交代码。`;
+  const template = await loadPrompt("variantgen_solution", DEFAULT_VARIANTGEN_SOLUTION_PROMPT);
+  const prompt = template
+    .replaceAll("{{title}}", draft.title)
+    .replaceAll("{{description}}", draft.description)
+    .replaceAll("{{input_format}}", draft.inputFormat)
+    .replaceAll("{{output_format}}", draft.outputFormat);
 
   const response = await client.messages.stream({
     model,

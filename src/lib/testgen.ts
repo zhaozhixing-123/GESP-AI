@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
 import { normalizeOutput } from "./normalize";
+import { prisma } from "./prisma";
+import { promptCache } from "./prompt-cache";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -9,6 +11,65 @@ export const TESTGEN_MODEL_DISPLAY = "Claude Sonnet 4.6";
 
 const FALLBACK_MODEL = "claude-opus-4-7";
 const MAX_RETRIES = 3;
+
+export const DEFAULT_TESTGEN_SOLUTIONS_PROMPT = `你是算法竞赛出题人。请根据题目写两个独立的 C++ 解法。
+
+## 题目信息
+{{problem_context}}
+
+## 重要：先验证样例
+在写代码之前，请先仔细阅读每个样例，手动推演一遍输入到输出的完整过程。
+特别注意：边界条件（是否包含端点）、计数方式（从0还是从1）、四舍五入规则等。
+你的代码必须在这些样例上产生完全一致的输出。
+
+## 任务
+写两个完全独立的 C++ 解法，每个都能正确解决这道题。
+
+### solution1（暴力法）
+- 用最简单、最直接的方式
+- 不追求效率，只追求正确性
+
+### solution2（不同思路）
+- 用与 solution1 不同的算法思路
+- 同样必须正确
+
+请调用 submit_solutions 工具提交你的两个解法。`;
+
+export const DEFAULT_TESTGEN_INPUTS_PROMPT = `你是算法竞赛出题人。请根据题目生成 15 组测试输入数据。
+
+## 题目信息
+{{problem_context}}
+
+## 要求
+严格遵守题目的数据范围，生成以下类型的测试输入：
+- 2-3 组最小边界（最小的 n、最小值等）
+- 2-3 组最大边界
+- 2-3 组特殊情况（全是同一个数、全是0、全是最大值等）
+- 5-7 组随机中等规模数据
+
+只需要输入数据，不需要输出。
+
+## 重要：控制每组输入的长度
+- 如果 n 代表数组长度/行数等，最大边界的 n 不要超过 100
+- 中等规模数据的 n 取 10-50
+- 每组输入要简洁，不要生成过长的数据
+
+请调用 submit_inputs 工具提交测试输入。`;
+
+async function loadPrompt(category: string, fallback: string): Promise<string> {
+  return promptCache.get(category, async () => {
+    try {
+      const p = await prisma.prompt.findFirst({
+        where: { category },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (p?.content) return p.content;
+    } catch (e) {
+      console.error(`[TestGen] 加载提示词 ${category} 失败:`, e);
+    }
+    return fallback;
+  });
+}
 
 interface Problem {
   title: string;
@@ -63,28 +124,8 @@ async function callModelWithTool<T>(
 
 /** 第一步：生成两个独立 C++ 解法 */
 async function generateSolutions(problem: Problem, model: string): Promise<{ solution1: string; solution2: string }> {
-  const prompt = `你是算法竞赛出题人。请根据题目写两个独立的 C++ 解法。
-
-## 题目信息
-${buildProblemContext(problem)}
-
-## 重要：先验证样例
-在写代码之前，请先仔细阅读每个样例，手动推演一遍输入到输出的完整过程。
-特别注意：边界条件（是否包含端点）、计数方式（从0还是从1）、四舍五入规则等。
-你的代码必须在这些样例上产生完全一致的输出。
-
-## 任务
-写两个完全独立的 C++ 解法，每个都能正确解决这道题。
-
-### solution1（暴力法）
-- 用最简单、最直接的方式
-- 不追求效率，只追求正确性
-
-### solution2（不同思路）
-- 用与 solution1 不同的算法思路
-- 同样必须正确
-
-请调用 submit_solutions 工具提交你的两个解法。`;
+  const template = await loadPrompt("testgen_solutions", DEFAULT_TESTGEN_SOLUTIONS_PROMPT);
+  const prompt = template.replaceAll("{{problem_context}}", buildProblemContext(problem));
 
   console.log(`[TestGen] 生成解法，模型: ${model}`);
   const result = await callModelWithTool<{ solution1: string; solution2: string }>(
@@ -112,26 +153,8 @@ ${buildProblemContext(problem)}
 
 /** 第二步：生成测试输入 */
 async function generateInputs(problem: Problem, model: string): Promise<string[]> {
-  const prompt = `你是算法竞赛出题人。请根据题目生成 15 组测试输入数据。
-
-## 题目信息
-${buildProblemContext(problem)}
-
-## 要求
-严格遵守题目的数据范围，生成以下类型的测试输入：
-- 2-3 组最小边界（最小的 n、最小值等）
-- 2-3 组最大边界
-- 2-3 组特殊情况（全是同一个数、全是0、全是最大值等）
-- 5-7 组随机中等规模数据
-
-只需要输入数据，不需要输出。
-
-## 重要：控制每组输入的长度
-- 如果 n 代表数组长度/行数等，最大边界的 n 不要超过 100
-- 中等规模数据的 n 取 10-50
-- 每组输入要简洁，不要生成过长的数据
-
-请调用 submit_inputs 工具提交测试输入。`;
+  const template = await loadPrompt("testgen_inputs", DEFAULT_TESTGEN_INPUTS_PROMPT);
+  const prompt = template.replaceAll("{{problem_context}}", buildProblemContext(problem));
 
   console.log(`[TestGen] 生成输入，模型: ${model}`);
   const result = await callModelWithTool<{ inputs: string[] }>(

@@ -133,7 +133,7 @@ model Order {
 model Prompt {
   id        Int      @id @default(autoincrement())
   name      String   @unique
-  category  String   // system | wrongbook_analysis | exam_review | problem_autotag
+  category  String   // system | wrongbook_analysis | exam_review | problem_autotag | testgen_solutions | testgen_inputs | testverify_solution | variantgen_problem | variantgen_solution | variantverify_solution
   content   String
   variables String   @default("[]") // JSON: ["problem_title", "user_code", ...]
   updatedAt DateTime @updatedAt

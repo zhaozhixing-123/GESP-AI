@@ -1,11 +1,47 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
 import { normalizeOutput } from "./normalize";
+import { prisma } from "./prisma";
+import { promptCache } from "./prompt-cache";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const VERIFY_MODEL = "claude-opus-4-7";
 export const VERIFY_MODEL_DISPLAY = "Claude Opus 4.7";
+
+export const DEFAULT_TESTVERIFY_SOLUTION_PROMPT = `请根据以下题目写一个正确的 C++ 解法。
+
+## 题目信息
+**标题**: {{title}}
+**描述**: {{description}}
+**输入格式**: {{input_format}}
+**输出格式**: {{output_format}}
+{{sample_text}}
+
+## 重要：先验证样例
+在写代码之前，请先仔细阅读每个样例，手动推演一遍输入到输出的完整过程。
+特别注意：边界条件（是否包含端点）、计数方式（从0还是从1）、四舍五入规则等。
+
+## 要求
+- 写一个完全正确的 C++ 程序，读 stdin 写 stdout
+- 确保逻辑严谨，处理所有边界情况
+
+请调用 submit_solution 工具提交你的解法。`;
+
+async function getTestverifySolutionPrompt(): Promise<string> {
+  return promptCache.get("testverify_solution", async () => {
+    try {
+      const p = await prisma.prompt.findFirst({
+        where: { category: "testverify_solution" },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (p?.content) return p.content;
+    } catch (e) {
+      console.error("[Verify] 加载提示词失败:", e);
+    }
+    return DEFAULT_TESTVERIFY_SOLUTION_PROMPT;
+  });
+}
 
 interface Problem {
   title: string;
@@ -37,24 +73,13 @@ async function getOpusSolution(problem: Problem): Promise<string> {
     .map((s: any, i: number) => `样例${i + 1}:\n输入:\n${s.input}\n输出:\n${s.output}`)
     .join("\n\n");
 
-  const prompt = `请根据以下题目写一个正确的 C++ 解法。
-
-## 题目信息
-**标题**: ${problem.title}
-**描述**: ${problem.description}
-**输入格式**: ${problem.inputFormat}
-**输出格式**: ${problem.outputFormat}
-${sampleText ? `**样例**:\n${sampleText}` : ""}
-
-## 重要：先验证样例
-在写代码之前，请先仔细阅读每个样例，手动推演一遍输入到输出的完整过程。
-特别注意：边界条件（是否包含端点）、计数方式（从0还是从1）、四舍五入规则等。
-
-## 要求
-- 写一个完全正确的 C++ 程序，读 stdin 写 stdout
-- 确保逻辑严谨，处理所有边界情况
-
-请调用 submit_solution 工具提交你的解法。`;
+  const template = await getTestverifySolutionPrompt();
+  const prompt = template
+    .replaceAll("{{title}}", problem.title)
+    .replaceAll("{{description}}", problem.description)
+    .replaceAll("{{input_format}}", problem.inputFormat)
+    .replaceAll("{{output_format}}", problem.outputFormat)
+    .replaceAll("{{sample_text}}", sampleText ? `**样例**:\n${sampleText}` : "");
 
   console.log(`[Verify] 调用模型: ${VERIFY_MODEL}`);
   const response = await client.messages.stream({

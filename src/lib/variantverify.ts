@@ -1,11 +1,44 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
 import { normalizeOutput } from "./normalize";
+import { prisma } from "./prisma";
+import { promptCache } from "./prompt-cache";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const VERIFY_MODEL = "claude-opus-4-7";
 const MAX_SOLUTION_RETRIES = 3;
+
+export const DEFAULT_VARIANTVERIFY_SOLUTION_PROMPT = `请根据以下题目写一个完整正确的 C++ 解法。
+
+## 题目信息
+**标题**: {{title}}
+**描述**: {{description}}
+**输入格式**: {{input_format}}
+**输出格式**: {{output_format}}
+{{sample_text}}
+
+## 重要
+- 先仔细阅读每个样例，手动推演一遍
+- 特别注意边界条件、计数方式、四舍五入规则
+- 你的代码必须在所有样例上产生完全一致的输出
+
+请调用 submit_solution 工具提交你的解法。`;
+
+async function getVariantverifySolutionPrompt(): Promise<string> {
+  return promptCache.get("variantverify_solution", async () => {
+    try {
+      const p = await prisma.prompt.findFirst({
+        where: { category: "variantverify_solution" },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (p?.content) return p.content;
+    } catch (e) {
+      console.error("[VariantVerify] 加载提示词失败:", e);
+    }
+    return DEFAULT_VARIANTVERIFY_SOLUTION_PROMPT;
+  });
+}
 
 interface VariantProblem {
   id: number;
@@ -63,21 +96,13 @@ async function getOpusSolution(variant: VariantProblem): Promise<string> {
     )
     .join("\n\n");
 
-  const prompt = `请根据以下题目写一个完整正确的 C++ 解法。
-
-## 题目信息
-**标题**: ${variant.title}
-**描述**: ${variant.description}
-**输入格式**: ${variant.inputFormat}
-**输出格式**: ${variant.outputFormat}
-${sampleText ? `**样例**:\n${sampleText}` : ""}
-
-## 重要
-- 先仔细阅读每个样例，手动推演一遍
-- 特别注意边界条件、计数方式、四舍五入规则
-- 你的代码必须在所有样例上产生完全一致的输出
-
-请调用 submit_solution 工具提交你的解法。`;
+  const template = await getVariantverifySolutionPrompt();
+  const prompt = template
+    .replaceAll("{{title}}", variant.title)
+    .replaceAll("{{description}}", variant.description)
+    .replaceAll("{{input_format}}", variant.inputFormat)
+    .replaceAll("{{output_format}}", variant.outputFormat)
+    .replaceAll("{{sample_text}}", sampleText ? `**样例**:\n${sampleText}` : "");
 
   const response = await client.messages.stream({
     model: VERIFY_MODEL,
