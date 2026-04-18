@@ -206,7 +206,7 @@ export default function LandingPage() {
             href={REGISTER_URL}
             className="rounded-lg bg-[#1d5bd6] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-lg"
           >
-            开始使用
+            开始自学
           </Link>
         </div>
       </nav>
@@ -220,46 +220,47 @@ export default function LandingPage() {
           style={{ backgroundImage: "radial-gradient(circle, #0c1524 0.8px, transparent 0.8px)", backgroundSize: "20px 20px" }}
         />
 
-        <div className="relative z-10 max-w-[720px]">
+        <div className="relative z-10 mx-auto max-w-[720px]">
           {/* pill badge */}
           <span className="inline-flex items-center gap-2 rounded-full border border-[#1d5bd6]/20 bg-[#1d5bd6]/5 px-4 py-1.5 text-xs font-medium text-[#1d5bd6]">
             <span className="h-2 w-2 rounded-full bg-[#34d399]" />
             创始人：赵知行，小学五年级
           </span>
 
-          {/* 产品名 */}
-          <p className="mt-6 text-lg font-bold text-[#1d5bd6] sm:text-xl" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-            GESP AI 私教
-          </p>
-
-          {/* 主标题 */}
-          <h1
-            className="mt-4 text-[clamp(2.25rem,6vw,3.75rem)] font-black leading-tight tracking-tight"
-            style={{ fontFamily: "'Noto Serif SC', serif" }}
-          >
-            告别题海，自学成才
-          </h1>
-
-          {/* 副标题 */}
-          <p className="mx-auto mt-6 max-w-xl text-[clamp(0.9375rem,2vw,1.125rem)] leading-relaxed text-[#666]">
-            专为备考 GESP 1-8 级的家庭而设计
-          </p>
-
-          {/* CTA */}
-          <div className="mt-12">
-            <Link
-              href={REGISTER_URL}
-              className="inline-block rounded-xl bg-[#1d5bd6] px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-[#1d5bd6]/20 transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#1d5bd6]/30"
+          {/* 标题组 */}
+          <div className="mt-10">
+            <p
+              className="text-base font-semibold tracking-wide text-[#1d5bd6] sm:text-lg"
+              style={{ fontFamily: "'Noto Serif SC', serif" }}
             >
-              让孩子开始自学
-            </Link>
-            <p className="mt-3 text-xs text-[#999]">免费体验一道真题</p>
-            <p className="mt-6">
-              <Link href="/story" className="text-sm text-[#1d5bd6] hover:underline">
-                赵知行的故事 →
-              </Link>
+              GESP AI 私教
+            </p>
+            <h1
+              className="mt-3 text-[clamp(2.25rem,6vw,3.75rem)] font-black leading-[1.15] tracking-tight"
+              style={{ fontFamily: "'Noto Serif SC', serif" }}
+            >
+              告别题海，自学成才
+            </h1>
+            <p className="mx-auto mt-5 max-w-lg text-[clamp(0.9375rem,2vw,1.125rem)] leading-relaxed text-[#555]">
+              专为备考 GESP 1-8 级的家庭而设计
             </p>
           </div>
+
+          {/* CTA 组 */}
+          <div className="mt-14 flex flex-col items-center">
+            <Link
+              href={REGISTER_URL}
+              className="inline-block w-full rounded-xl bg-[#1d5bd6] px-10 py-4 text-base font-semibold text-white shadow-lg shadow-[#1d5bd6]/20 transition hover:bg-[#1550b8] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#1d5bd6]/30 sm:w-auto"
+            >
+              开始自学
+            </Link>
+            <p className="mt-3 text-xs text-[#999]">免费体验一道真题</p>
+          </div>
+
+          {/* 次要链接 */}
+          <Link href="/story" className="mt-10 inline-block text-sm text-[#1d5bd6] hover:underline">
+            赵知行的故事 →
+          </Link>
         </div>
       </section>
 
