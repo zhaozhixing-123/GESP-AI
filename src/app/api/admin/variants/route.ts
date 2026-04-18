@@ -252,6 +252,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true, title: true, level: true, genStatus: true,
         genError: true, verifiedCount: true, createdAt: true,
+        verifiedAt: true, reviewReport: true, lastReviewedAt: true,
       },
       orderBy: { createdAt: "asc" },
     });

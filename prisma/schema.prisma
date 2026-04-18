@@ -52,6 +52,8 @@ model Problem {
   tags                String               @default("[]") // JSON: ["递推/递归", "动态规划"]
   verifiedAt          DateTime?            // 上次复核时间
   verifiedCount       Int                  @default(0) // 复核通过的测试点数
+  reviewReport        String?              // JSON: 最近一次再复核报告 {reviewedAt, model, total, passed, failed, issues: [...]}
+  lastReviewedAt      DateTime?            // 最近一次再复核时间（再复核不改 testCases）
   submissions         Submission[]
   wrongBooks          WrongBook[]
   chatHistory         ChatHistory[]
@@ -166,6 +168,8 @@ model VariantProblem {
   genModel      String?
   verifiedAt    DateTime?
   verifiedCount Int      @default(0)
+  reviewReport   String?   // JSON: 最近一次再复核报告
+  lastReviewedAt DateTime? // 最近一次再复核时间
   createdAt     DateTime @default(now())
 
   source            Problem             @relation(fields: [sourceId], references: [id])

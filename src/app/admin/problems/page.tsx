@@ -11,6 +11,31 @@ interface Problem {
   testCases?: string;
   verifiedAt?: string | null;
   verifiedCount?: number;
+  reviewReport?: string | null;
+  lastReviewedAt?: string | null;
+}
+
+interface ReviewIssue {
+  index: number;
+  input: string;
+  expectedOutput: string;
+  opusOutput: string;
+  status: "pass" | "mismatch" | "error";
+}
+
+interface ReviewReport {
+  reviewedAt: string;
+  model: string;
+  modelDisplay?: string;
+  total: number;
+  passed: number;
+  failed: number;
+  issues: ReviewIssue[];
+}
+
+function parseReviewReport(raw?: string | null): ReviewReport | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as ReviewReport; } catch { return null; }
 }
 
 interface ImportResult {
@@ -28,6 +53,9 @@ interface VariantDetail {
   genError?: string;
   verifiedCount: number;
   createdAt: string;
+  verifiedAt?: string | null;
+  reviewReport?: string | null;
+  lastReviewedAt?: string | null;
 }
 
 export default function AdminProblemsPage() {
@@ -506,6 +534,20 @@ export default function AdminProblemsPage() {
   const [batchVerifyProgress, setBatchVerifyProgress] = useState("");
   const [batchVerifyResults, setBatchVerifyResults] = useState<Array<{ title: string; ok: boolean; msg: string }>>([]);
 
+  // --- 再复核（非破坏性）---
+  const [reviewing, setReviewing] = useState<number | null>(null);
+  const [reviewMsg, setReviewMsg] = useState("");
+  const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
+  const [batchReviewLevel, setBatchReviewLevel] = useState("0");
+  const [batchReviewRunning, setBatchReviewRunning] = useState(false);
+  const [batchReviewProgress, setBatchReviewProgress] = useState("");
+  const [batchReviewResults, setBatchReviewResults] = useState<Array<{ title: string; failed: number; total: number; error?: string }>>([]);
+
+  // --- 变形题再复核 ---
+  const [variantReviewing, setVariantReviewing] = useState<number | null>(null);
+  const [variantReviewMsg, setVariantReviewMsg] = useState("");
+  const [expandedVariantReviewId, setExpandedVariantReviewId] = useState<number | null>(null);
+
   // 带 502 重试的 fetch
   async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
     for (let i = 0; i <= retries; i++) {
@@ -620,6 +662,93 @@ export default function AdminProblemsPage() {
     setBatchVerifyProgress(`复核完成：${ok} 题全通过，${bad} 题有问题（已自动清理）`);
     setBatchVerifyRunning(false);
     fetchProblems();
+  }
+
+  // --- 再复核：不删除 testCases，只写 reviewReport ---
+  async function handleReview(id: number) {
+    if (reviewing || batchReviewRunning) return;
+    setReviewing(id);
+    setReviewMsg("正在用 Opus 4.7 再复核（不删除测试点，仅记录差异）...");
+    try {
+      const res = await fetchWithRetry(`/api/admin/problems/${id}/review`, { method: "POST", headers });
+      const data = await res.json();
+      if (res.ok) {
+        setReviewMsg(`${data.message}（by ${data.modelDisplay || data.model}）`);
+        setExpandedReviewId(id);
+        fetchProblems();
+      } else {
+        setReviewMsg(`失败: ${data.error}`);
+      }
+    } catch {
+      setReviewMsg("网络错误");
+    }
+    setReviewing(null);
+    setTimeout(() => setReviewMsg(""), 10000);
+  }
+
+  async function handleBatchReview() {
+    if (batchReviewRunning || reviewing || verifying || generating || batchVerifyRunning || batchGenRunning) return;
+    const level = parseInt(batchReviewLevel);
+    const levelProblems = level > 0 ? problems.filter((p) => p.level === level) : problems;
+    const targets = levelProblems.filter((p) => getTestCaseCount(p) > 0);
+
+    if (targets.length === 0) {
+      setBatchReviewProgress("没有需要再复核的题目（无测试用例）");
+      return;
+    }
+    if (!confirm(`用 Opus 4.7 再复核 ${targets.length} 道${level > 0 ? ` ${level}级` : ""}题目？每道约 2-3 分钟，不会删除测试点，只记录差异。`)) return;
+
+    setBatchReviewRunning(true);
+    setBatchReviewResults([]);
+    let okCount = 0;
+    let badCount = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const p = targets[i];
+      setBatchReviewProgress(`再复核 ${i + 1}/${targets.length}: ${p.title}...`);
+      setReviewing(p.id);
+      try {
+        const res = await fetchWithRetry(`/api/admin/problems/${p.id}/review`, { method: "POST", headers });
+        const data = await res.json();
+        if (res.ok) {
+          const failed = data.failed ?? 0;
+          if (failed > 0) badCount++; else okCount++;
+          setBatchReviewResults((prev) => [...prev, { title: p.title, failed, total: data.total ?? 0 }]);
+        } else {
+          badCount++;
+          setBatchReviewResults((prev) => [...prev, { title: p.title, failed: 0, total: 0, error: data.error }]);
+        }
+      } catch {
+        badCount++;
+        setBatchReviewResults((prev) => [...prev, { title: p.title, failed: 0, total: 0, error: "网络错误" }]);
+      }
+      setReviewing(null);
+    }
+
+    setBatchReviewProgress(`再复核完成：${okCount} 题全通过，${badCount} 题有差异待人工审阅`);
+    setBatchReviewRunning(false);
+    fetchProblems();
+  }
+
+  async function handleVariantReview(vid: number, problemId: number) {
+    if (variantReviewing) return;
+    setVariantReviewing(vid);
+    setVariantReviewMsg(`正在用 Opus 4.7 再复核变形题 v${vid}...`);
+    try {
+      const res = await fetchWithRetry(`/api/admin/variants/${vid}/review`, { method: "POST", headers });
+      const data = await res.json();
+      if (res.ok) {
+        setVariantReviewMsg(`${data.message}（by ${data.modelDisplay || data.model}）`);
+        setExpandedVariantReviewId(vid);
+        await refreshVariantDetails(problemId);
+      } else {
+        setVariantReviewMsg(`失败: ${data.error}`);
+      }
+    } catch {
+      setVariantReviewMsg("网络错误");
+    }
+    setVariantReviewing(null);
+    setTimeout(() => setVariantReviewMsg(""), 10000);
   }
 
   // --- 单题导入逻辑 ---
@@ -885,6 +1014,51 @@ export default function AdminProblemsPage() {
               )}
             </div>
 
+            {/* 批量再复核测试数据（非破坏性） */}
+            <div className="mb-4 rounded-lg bg-white p-4 shadow">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">批量再复核测试用例</span>
+                <select
+                  value={batchReviewLevel}
+                  onChange={(e) => setBatchReviewLevel(e.target.value)}
+                  className="rounded-md border px-3 py-1.5 text-sm"
+                  disabled={batchReviewRunning}
+                >
+                  <option value="0">全部级别</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((l) => (
+                    <option key={l} value={l}>{l}级（{problems.filter((p) => p.level === l).length} 题）</option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBatchReview}
+                  disabled={batchReviewRunning || batchVerifyRunning || batchGenRunning || generating !== null || verifying !== null || reviewing !== null}
+                  className="rounded-md bg-rose-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                >
+                  {batchReviewRunning ? "再复核中..." : "开始再复核"}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-400">Opus 4.7 独立写解法跑全部测试点，仅记录不一致项，不删除任何测试点</p>
+
+              {batchReviewProgress && (
+                <div className={`mt-3 text-sm ${batchReviewRunning ? "text-yellow-700" : batchReviewProgress.includes("差异") ? "text-orange-600" : "text-rose-700"}`}>
+                  {batchReviewProgress}
+                </div>
+              )}
+
+              {batchReviewResults.length > 0 && (
+                <div className="mt-3 max-h-48 space-y-1 overflow-auto">
+                  {batchReviewResults.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate text-gray-700">{r.title}</span>
+                      <span className={r.error ? "text-red-600" : r.failed > 0 ? "text-orange-600" : "text-rose-600"}>
+                        {r.error ? `失败: ${r.error}` : r.failed > 0 ? `${r.failed}/${r.total} 待审` : `全部 ${r.total} 通过`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* 批量生成变形题 */}
             <div className="mb-4 rounded-lg bg-white p-4 shadow">
               <div className="flex items-center gap-3">
@@ -1054,6 +1228,18 @@ export default function AdminProblemsPage() {
               </div>
             )}
 
+            {reviewMsg && (
+              <div className={`mb-4 rounded-lg p-3 text-sm ${reviewMsg.includes("失败") || reviewMsg.includes("错误") ? "bg-red-50 text-red-600" : reviewing ? "bg-yellow-50 text-yellow-700" : "bg-rose-50 text-rose-700"}`}>
+                {reviewMsg}
+              </div>
+            )}
+
+            {variantReviewMsg && (
+              <div className={`mb-4 rounded-lg p-3 text-sm ${variantReviewMsg.includes("失败") || variantReviewMsg.includes("错误") ? "bg-red-50 text-red-600" : variantReviewing ? "bg-yellow-50 text-yellow-700" : "bg-rose-50 text-rose-700"}`}>
+                {variantReviewMsg}
+              </div>
+            )}
+
             {variantVerifyMsg && (
               <div className={`mb-4 rounded-lg p-3 text-sm ${variantVerifyMsg.includes("失败") || variantVerifyMsg.includes("需检查") ? "bg-red-50 text-red-600" : variantVerifying ? "bg-yellow-50 text-yellow-700" : "bg-teal-50 text-teal-700"}`}>
                 {variantVerifyMsg}
@@ -1103,13 +1289,31 @@ export default function AdminProblemsPage() {
                           {(() => {
                             const tcCount = getTestCaseCount(p);
                             if (tcCount === 0) return <span className="text-gray-300">-</span>;
-                            if (!p.verifiedAt) return <span className="text-gray-400">未复核</span>;
+                            const report = parseReviewReport(p.reviewReport);
+                            const reviewBadge = p.lastReviewedAt && report
+                              ? (
+                                <button
+                                  onClick={() => setExpandedReviewId(expandedReviewId === p.id ? null : p.id)}
+                                  title={`再复核 ${getTimeAgo(p.lastReviewedAt)}`}
+                                  className={`ml-1 rounded px-1 text-xs ${report.failed > 0 ? "bg-rose-100 text-rose-700" : "bg-green-100 text-green-700"} hover:opacity-80`}
+                                >
+                                  {report.failed > 0 ? `⚠ ${report.failed}待审` : `✓ 再复核`}
+                                </button>
+                              )
+                              : null;
+                            if (!p.verifiedAt) return <>
+                              <span className="text-gray-400">未复核</span>
+                              {reviewBadge}
+                            </>;
                             const vc = p.verifiedCount ?? 0;
                             const allPassed = vc === tcCount;
                             const timeAgo = getTimeAgo(p.verifiedAt);
-                            return allPassed
-                              ? <span className="text-green-600" title={timeAgo}>{vc}/{tcCount} &#10003;</span>
-                              : <span className="text-amber-600" title={timeAgo}>{vc}/{tcCount} &#9888;</span>;
+                            return <>
+                              {allPassed
+                                ? <span className="text-green-600" title={timeAgo}>{vc}/{tcCount} &#10003;</span>
+                                : <span className="text-amber-600" title={timeAgo}>{vc}/{tcCount} &#9888;</span>}
+                              {reviewBadge}
+                            </>;
                           })()}
                         </td>
                         <td className="px-4 py-3 text-sm">
@@ -1152,6 +1356,14 @@ export default function AdminProblemsPage() {
                             {verifying === p.id ? "复核中..." : "复核"}
                           </button>
                           <button
+                            onClick={() => handleReview(p.id)}
+                            disabled={reviewing !== null || batchReviewRunning || getTestCaseCount(p) === 0}
+                            title="Opus 4.7 再复核，不删除测试点"
+                            className="mr-2 text-rose-600 hover:underline disabled:opacity-50"
+                          >
+                            {reviewing === p.id ? "再复核中..." : "再复核"}
+                          </button>
+                          <button
                             onClick={() => handleGenerateVariants(p.id)}
                             disabled={variantGenRunning !== null || batchVariantRunning}
                             title="生成变形题"
@@ -1173,6 +1385,53 @@ export default function AdminProblemsPage() {
                           <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:underline">删除</button>
                         </td>
                       </tr>
+                      {expandedReviewId === p.id && (() => {
+                        const report = parseReviewReport(p.reviewReport);
+                        if (!report) return null;
+                        return (
+                          <tr className="border-b bg-rose-50">
+                            <td colSpan={7} className="px-6 py-3">
+                              <div className="mb-2 flex items-center justify-between text-xs text-rose-700">
+                                <span>
+                                  再复核报告 · {report.modelDisplay || report.model} · {new Date(report.reviewedAt).toLocaleString()} · {report.passed}/{report.total} 通过
+                                  {report.failed > 0 && <span className="ml-2 font-semibold">⚠ {report.failed} 个差异待人工审阅</span>}
+                                </span>
+                                <button onClick={() => setExpandedReviewId(null)} className="text-gray-500 hover:underline">收起</button>
+                              </div>
+                              {report.issues.length === 0 ? (
+                                <div className="text-sm text-green-700">✓ 全部测试点通过再复核</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {report.issues.map((iss) => (
+                                    <div key={iss.index} className="rounded border border-rose-200 bg-white p-2 text-xs">
+                                      <div className="mb-1 flex items-center justify-between">
+                                        <span className="font-mono text-rose-700">
+                                          #{iss.index + 1} · {iss.status === "mismatch" ? "输出不一致" : "运行错误"}
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
+                                        <div>
+                                          <div className="mb-0.5 text-gray-500">输入</div>
+                                          <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-1.5">{iss.input}</pre>
+                                        </div>
+                                        <div>
+                                          <div className="mb-0.5 text-gray-500">当前期望</div>
+                                          <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-1.5">{iss.expectedOutput}</pre>
+                                        </div>
+                                        <div>
+                                          <div className="mb-0.5 text-gray-500">Opus 输出</div>
+                                          <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-rose-50 p-1.5">{iss.opusOutput}</pre>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                  <p className="text-xs text-gray-500">如需修改测试点，请点击&ldquo;编辑&rdquo;手动处理。</p>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })()}
                       {expandedProblemId === p.id && (
                         <tr className="border-b bg-amber-50">
                           <td colSpan={7} className="px-6 py-3">
@@ -1188,12 +1447,16 @@ export default function AdminProblemsPage() {
                                     <th className="pb-1 pr-4">标题</th>
                                     <th className="pb-1 pr-4">状态</th>
                                     <th className="pb-1 pr-4">测试点</th>
+                                    <th className="pb-1 pr-4">再复核</th>
                                     <th className="pb-1">操作</th>
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {variantDetails[p.id].map((v) => (
-                                    <tr key={v.id} className="border-t border-amber-100">
+                                  {variantDetails[p.id].map((v) => {
+                                    const vReport = parseReviewReport(v.reviewReport);
+                                    return (
+                                    <Fragment key={v.id}>
+                                    <tr className="border-t border-amber-100">
                                       <td className="py-1 pr-4 font-mono text-gray-400">v{v.id}</td>
                                       <td className="py-1 pr-4 text-gray-800">{v.title}</td>
                                       <td className="py-1 pr-4">
@@ -1203,6 +1466,19 @@ export default function AdminProblemsPage() {
                                         {v.genStatus === "pending"    && <span className="text-gray-400">等待</span>}
                                       </td>
                                       <td className="py-1 pr-4 text-gray-500">{v.verifiedCount ?? 0}</td>
+                                      <td className="py-1 pr-4">
+                                        {vReport ? (
+                                          <button
+                                            onClick={() => setExpandedVariantReviewId(expandedVariantReviewId === v.id ? null : v.id)}
+                                            title={v.lastReviewedAt ? getTimeAgo(v.lastReviewedAt) : ""}
+                                            className={`rounded px-1 text-xs ${vReport.failed > 0 ? "bg-rose-100 text-rose-700" : "bg-green-100 text-green-700"}`}
+                                          >
+                                            {vReport.failed > 0 ? `⚠ ${vReport.failed}/${vReport.total}` : `✓ ${vReport.total}`}
+                                          </button>
+                                        ) : (
+                                          <span className="text-gray-300 text-xs">-</span>
+                                        )}
+                                      </td>
                                       <td className="py-1 flex items-center gap-3">
                                         {v.genStatus === "ready" && (
                                           <a
@@ -1214,6 +1490,16 @@ export default function AdminProblemsPage() {
                                             预览
                                           </a>
                                         )}
+                                        {v.genStatus === "ready" && (
+                                          <button
+                                            onClick={() => handleVariantReview(v.id, p.id)}
+                                            disabled={variantReviewing !== null}
+                                            title="Opus 4.7 再复核该变形题"
+                                            className="text-rose-600 hover:underline text-xs disabled:opacity-50"
+                                          >
+                                            {variantReviewing === v.id ? "再复核中..." : "再复核"}
+                                          </button>
+                                        )}
                                         <button
                                           onClick={() => handleDeleteVariant(v.id, p.id)}
                                           className="text-red-500 hover:underline text-xs"
@@ -1222,7 +1508,48 @@ export default function AdminProblemsPage() {
                                         </button>
                                       </td>
                                     </tr>
-                                  ))}
+                                    {expandedVariantReviewId === v.id && vReport && (
+                                      <tr className="border-t border-rose-200 bg-rose-50">
+                                        <td colSpan={6} className="px-3 py-2">
+                                          <div className="mb-2 flex items-center justify-between text-xs text-rose-700">
+                                            <span>
+                                              v{v.id} 再复核 · {vReport.modelDisplay || vReport.model} · {new Date(vReport.reviewedAt).toLocaleString()} · {vReport.passed}/{vReport.total} 通过
+                                            </span>
+                                            <button onClick={() => setExpandedVariantReviewId(null)} className="text-gray-500 hover:underline">收起</button>
+                                          </div>
+                                          {vReport.issues.length === 0 ? (
+                                            <div className="text-xs text-green-700">✓ 全部测试点通过再复核</div>
+                                          ) : (
+                                            <div className="space-y-2">
+                                              {vReport.issues.map((iss) => (
+                                                <div key={iss.index} className="rounded border border-rose-200 bg-white p-2 text-xs">
+                                                  <div className="mb-1 font-mono text-rose-700">
+                                                    #{iss.index + 1} · {iss.status === "mismatch" ? "输出不一致" : "运行错误"}
+                                                  </div>
+                                                  <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
+                                                    <div>
+                                                      <div className="mb-0.5 text-gray-500">输入</div>
+                                                      <pre className="max-h-20 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-1">{iss.input}</pre>
+                                                    </div>
+                                                    <div>
+                                                      <div className="mb-0.5 text-gray-500">当前期望</div>
+                                                      <pre className="max-h-20 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-1">{iss.expectedOutput}</pre>
+                                                    </div>
+                                                    <div>
+                                                      <div className="mb-0.5 text-gray-500">Opus 输出</div>
+                                                      <pre className="max-h-20 overflow-auto whitespace-pre-wrap break-all rounded bg-rose-50 p-1">{iss.opusOutput}</pre>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    )}
+                                    </Fragment>
+                                    );
+                                  })}
                                 </tbody>
                               </table>
                             )}
