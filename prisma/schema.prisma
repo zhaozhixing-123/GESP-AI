@@ -27,6 +27,7 @@ model User {
   examDate            DateTime?            // 目标考试日期
   plan                String               @default("free") // free | monthly | quarterly | yearly
   planExpireAt        DateTime?            // 订阅到期时间，null = 免费用户
+  isInternal          Boolean              @default(false) // 内部测试账号，全面板统计排除
   submissions         Submission[]
   wrongBooks          WrongBook[]
   chatHistory         ChatHistory[]
@@ -212,6 +213,23 @@ model DailyFocusLog {
   user         User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, date])
+}
+
+// ───── 埋点事件 ─────
+
+model Event {
+  id           Int      @id @default(autoincrement())
+  type         String                  // page_view | problem_open | ...
+  userId       Int?                    // null = 未登录访客
+  anonymousId  String                  // 前端 localStorage 生成的 UUID，用于跨登录状态跟踪
+  path         String?                 // 页面路径
+  problemId    Int?                    // 关联题目（如 problem_open）
+  metadata     String?                 // JSON 字符串，存额外上下文
+  createdAt    DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
+  @@index([anonymousId, createdAt])
 }
 
 // ───── 邮箱验证码 ─────
