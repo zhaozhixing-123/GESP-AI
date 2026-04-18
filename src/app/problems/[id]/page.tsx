@@ -194,6 +194,31 @@ export default function ProblemDetailPage() {
       .catch(() => {});
   }, [id]);
 
+  // 切题时加载本题暂存代码；没有则回落到默认模板
+  useEffect(() => {
+    if (!id || typeof window === "undefined") return;
+    const saved = localStorage.getItem(`gesp_code_${id}`);
+    setCode(saved ?? DEFAULT_CODE);
+  }, [id]);
+
+  // 编辑时防抖写回 localStorage；仍是默认模板就不写，避免污染
+  useEffect(() => {
+    if (!id || typeof window === "undefined") return;
+    const key = `gesp_code_${id}`;
+    const timer = setTimeout(() => {
+      if (code && code !== DEFAULT_CODE) {
+        try {
+          localStorage.setItem(key, code);
+        } catch {
+          // 配额超了就忽略，不阻断做题
+        }
+      } else {
+        localStorage.removeItem(key);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [code, id]);
+
   async function handleToggleWrongBook() {
     if (wrongBookLoading) return;
     setWrongBookLoading(true);
