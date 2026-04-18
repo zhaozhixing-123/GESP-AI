@@ -10,20 +10,21 @@ import {
 } from "@/lib/weekRange";
 
 /**
- * 北极星面板接口：只输出两个 NS 指标 + 一个漏斗 + 一个目标级别分布。
+ * 北极星面板接口：只输出 P1 / P2 + 队列漏斗 + 级别分布（付费 vs 免费）。
  *
- * P1: 付费订阅用户数（B 口径 = 当下有效订阅，plan≠free 且 planExpireAt>now 且非内部账号）
- * P2: 本周付费用户中 AC≥1 道 distinct 题的人数（分母 = 当下 P1）
- * 漏斗: UV(distinct anonymousId) → 注册 → 首次提交 → 付费新增（均为本周新增）
- * 级别分布: targetLevel groupBy
+ * P1: 付费订阅人数（B 口径 = 当下快照）
+ * P2: 本周内"在付费状态且 AC≥1 道 distinct 题"的人数；分母 = P2 cohort 总数
+ * 漏斗: cohort 型，以首次 page_view 在窗口内的 anonymousId 为锚，追踪他们
+ *       注册 → 提交 → 付费（任意后续时间完成都算）
+ * 级别分布: 真实用户的 targetLevel 分布，按付费/免费拆分
  *
- * 所有统计都必须排除：role='admin'、isInternal=true。
+ * 所有统计排除 role='admin'、isInternal=true。
  */
 
-// 统一的"真实用户"过滤条件：排除 admin 和内部测试账号
+const P1_TARGET = parseInt(process.env.NORTH_STAR_P1_TARGET ?? "100");
 const REAL_USER = { role: "user", isInternal: false } as const;
 
-/** 统计某个时间窗内活跃付费订阅人数（按订阅快照计，非订单累计） */
+/** 当前时点 B 口径付费人数 */
 async function paidCountAt(when: Date): Promise<number> {
   return prisma.user.count({
     where: {
@@ -34,21 +35,38 @@ async function paidCountAt(when: Date): Promise<number> {
   });
 }
 
-/** 计算某个周内 AC≥1 道 distinct 题的付费用户数 */
-async function paidActiveInWeek(weekStart: Date, weekEnd: Date): Promise<number> {
-  // 周末时点为准：谁在周内是付费的，他们里谁在周内 AC 了任意一题
-  const paidIds = await prisma.user.findMany({
-    where: {
-      ...REAL_USER,
-      plan: { not: "free" },
-      planExpireAt: { gt: weekStart },
-    },
-    select: { id: true },
-  });
-  if (paidIds.length === 0) return 0;
+/**
+ * "某周内为付费用户"口径：周内任一时刻处于付费状态。
+ * = 周末之前已付费（planExpireAt > weekStart 表示周初尚未过期）
+ *   或 周内产生了 paid 订单（新增付费）。
+ */
+async function paidUserIdsInWindow(weekStart: Date, weekEnd: Date): Promise<number[]> {
+  const [subbed, newlyPaid] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        ...REAL_USER,
+        plan: { not: "free" },
+        planExpireAt: { gt: weekStart },
+      },
+      select: { id: true },
+    }),
+    prisma.$queryRaw<{ userId: number }[]>`
+      SELECT DISTINCT o."userId"
+      FROM "Order" o
+      JOIN "User" u ON u.id = o."userId"
+      WHERE o.status = 'paid'
+        AND o."paidAt" >= ${weekStart} AND o."paidAt" < ${weekEnd}
+        AND u."isInternal" = false AND u.role = 'user'`,
+  ]);
+  const set = new Set<number>(subbed.map((u) => u.id));
+  for (const r of newlyPaid) set.add(r.userId);
+  return Array.from(set);
+}
 
-  const ids = paidIds.map((u) => u.id);
-  const acUsers = await prisma.submission.findMany({
+/** 给定付费用户集合 + 时间窗，返回其中 AC≥1 distinct 题的人数 */
+async function paidAcCount(ids: number[], weekStart: Date, weekEnd: Date): Promise<number> {
+  if (ids.length === 0) return 0;
+  const rows = await prisma.submission.findMany({
     where: {
       userId: { in: ids },
       status: "AC",
@@ -57,72 +75,74 @@ async function paidActiveInWeek(weekStart: Date, weekEnd: Date): Promise<number>
     select: { userId: true },
     distinct: ["userId"],
   });
-  return acUsers.length;
+  return rows.length;
 }
 
-/** P1/P2 核心指标 */
+/** 某周 P2 = { active, denominator, ratio } */
+async function p2For(weekStart: Date, weekEnd: Date) {
+  const ids = await paidUserIdsInWindow(weekStart, weekEnd);
+  const active = await paidAcCount(ids, weekStart, weekEnd);
+  return {
+    active,
+    denominator: ids.length,
+    ratio: ids.length > 0 ? active / ids.length : 0,
+  };
+}
+
+/** P1 + P2 指标 */
 async function computeNorthStar() {
   const now = new Date();
   const { start: thisStart, end: thisEnd } = currentWeek(now);
   const { start: lastSameStart, end: lastSameEnd } = lastWeekSameProgress(now);
   const { start: lastFullStart, end: lastFullEnd } = lastWeek(now);
 
-  // P1 当前值（B 口径：实时快照）
+  // P1 当前值
   const p1Current = await paidCountAt(now);
 
-  // P1 四周滚动平均（取近 4 周每周起点时的付费快照均值）
-  const rolling4 = last8WeekStarts(now).slice(-5, -1); // 最近 4 周起点（不含本周）
-  const rollingCounts = await Promise.all(rolling4.map((d) => paidCountAt(d)));
-  const p1Rolling4wAvg =
-    rollingCounts.length > 0
-      ? Math.round(rollingCounts.reduce((a, b) => a + b, 0) / rollingCounts.length)
-      : 0;
-
-  // P1 WoW：用 "本周至今" 与 "上周同期" 的快照对比
-  // 快照取时点 = thisEnd 当前即 now / lastSameEnd
+  // P1 WoW（快照对比）
   const p1LastSame = await paidCountAt(lastSameEnd);
   const p1WowDelta = p1Current - p1LastSame;
   const p1WowPct = p1LastSame > 0 ? (p1WowDelta / p1LastSame) * 100 : null;
 
-  // P2 本周（分母 = P1）
-  const p2Active = await paidActiveInWeek(thisStart, thisEnd);
-  const p2Ratio = p1Current > 0 ? p2Active / p1Current : 0;
+  // P1 4 周净增 = 当前值 - 4 周前周一时点值
+  const weekStarts = last8WeekStarts(now);
+  const fourWeeksAgo = weekStarts[weekStarts.length - 5]; // 本周之前第 4 周的周一
+  const p1FourWeeksAgo = await paidCountAt(fourWeeksAgo);
+  const p1Net4w = p1Current - p1FourWeeksAgo;
 
-  // P2 WoW 同期：上周同期时点的付费人群里，上周同期时段内 AC≥1 的人数
-  const p2LastSame = await paidActiveInWeek(lastSameStart, lastSameEnd);
-  const p2WowDelta = p2Active - p2LastSame;
+  // P2 本周 / 上周同期 / 上周完整周
+  const [p2This, p2LastSame, p2LastFull] = await Promise.all([
+    p2For(thisStart, thisEnd),
+    p2For(lastSameStart, lastSameEnd),
+    p2For(lastFullStart, lastFullEnd),
+  ]);
 
-  // P2 四周滚动平均（每周完整周：本周之前 4 个完整周）
-  const pastWeekStarts = last8WeekStarts(now).slice(-5, -1);
-  const p2Past = await Promise.all(
-    pastWeekStarts.map((ws) => paidActiveInWeek(ws, nextWeekStart(ws))),
+  // P2 4 周滚动：近 4 个完整周的 ratio 均值（比例均值，不是绝对数）
+  const pastStarts = weekStarts.slice(-5, -1); // 最近 4 个已完成的完整周起点
+  const pastRatios = await Promise.all(
+    pastStarts.map(async (ws) => {
+      const we = nextWeekStart(ws);
+      const p = await p2For(ws, we);
+      return p.ratio;
+    }),
   );
-  const p2Rolling4wAvg =
-    p2Past.length > 0 ? Math.round(p2Past.reduce((a, b) => a + b, 0) / p2Past.length) : 0;
-
-  // 上周完整周 P2（给 UI 展示 "上周最终值" 作为对比基线）
-  const p2LastFull = await paidActiveInWeek(lastFullStart, lastFullEnd);
+  const p2Rolling4wRatio =
+    pastRatios.length > 0 ? pastRatios.reduce((a, b) => a + b, 0) / pastRatios.length : 0;
 
   return {
     p1: {
       current: p1Current,
-      target: 100,
-      rolling4wAvg: p1Rolling4wAvg,
-      wow: {
-        lastSame: p1LastSame,
-        delta: p1WowDelta,
-        deltaPct: p1WowPct,
-      },
+      target: P1_TARGET,
+      net4w: p1Net4w,
+      wow: { lastSame: p1LastSame, delta: p1WowDelta, deltaPct: p1WowPct },
     },
     p2: {
-      active: p2Active,
-      denominator: p1Current,
-      ratio: p2Ratio,
+      thisWeek: p2This,
       lastFullWeek: p2LastFull,
-      rolling4wAvg: p2Rolling4wAvg,
+      rolling4wRatio: p2Rolling4wRatio,
       wow: {
         lastSame: p2LastSame,
-        delta: p2WowDelta,
+        delta: p2This.active - p2LastSame.active,
       },
     },
     window: {
@@ -134,76 +154,130 @@ async function computeNorthStar() {
   };
 }
 
-/** 拉新→付费漏斗：UV → 注册 → 首次提交 → 付费（本周新增） */
-async function computeFunnel() {
-  const now = new Date();
-  const { start, end } = currentWeek(now);
-  const { start: lastStart, end: lastSameEnd } = lastWeekSameProgress(now);
-
-  async function funnelFor(ws: Date, we: Date) {
-    // UV: 去重 anonymousId 的 page_view；排除已登录用户里标记 internal 的那些事件
-    const uvRows = await prisma.$queryRaw<{ count: number }[]>`
-      SELECT COUNT(DISTINCT e."anonymousId")::int AS count
+/**
+ * 队列型漏斗：以首次 page_view 落在 [cohortStart, cohortEnd) 的 anonymousId
+ * 为锚，追踪他们的注册/提交/付费（maturityEnd 之前完成的才算）。
+ *
+ * maturityEnd 是"观测截止点"，保证本周 cohort 和上周同期 cohort 有同等观测
+ * 长度（都是窗口从起点到 maturityEnd-cohortStart 这么长）。
+ */
+async function cohortFunnel(cohortStart: Date, cohortEnd: Date, maturityEnd: Date) {
+  // Step 1: 首次 page_view 在窗口内的 anonymousId
+  //   用 MIN(createdAt) 算"首次"，只有 first >= cohortStart 且 < cohortEnd 才算本 cohort
+  //   排除 internal/admin 的已登录访问事件（匿名访问无法判断，只能保留）
+  const cohortRows = await prisma.$queryRaw<{ anonymousId: string }[]>`
+    WITH first_seen AS (
+      SELECT e."anonymousId", MIN(e."createdAt") AS first_at
       FROM "Event" e
       LEFT JOIN "User" u ON u.id = e."userId"
       WHERE e.type = 'page_view'
-        AND e."createdAt" >= ${ws} AND e."createdAt" < ${we}
-        AND (u.id IS NULL OR (u."isInternal" = false AND u.role <> 'admin'))`;
-    const uv = uvRows[0]?.count ?? 0;
+        AND (u.id IS NULL OR (u."isInternal" = false AND u.role <> 'admin'))
+      GROUP BY e."anonymousId"
+    )
+    SELECT "anonymousId" FROM first_seen
+    WHERE first_at >= ${cohortStart} AND first_at < ${cohortEnd}`;
 
-    // 注册：本周新建的真实用户
-    const signup = await prisma.user.count({
-      where: { ...REAL_USER, createdAt: { gte: ws, lt: we } },
-    });
-
-    // 首次提交：首次提交的 createdAt 落在本周的真实用户数
-    const firstSubRows = await prisma.$queryRaw<{ count: number }[]>`
-      SELECT COUNT(*)::int AS count FROM (
-        SELECT s."userId", MIN(s."createdAt") AS first_at
-        FROM "Submission" s
-        JOIN "User" u ON u.id = s."userId"
-        WHERE u."isInternal" = false AND u.role = 'user'
-        GROUP BY s."userId"
-      ) t
-      WHERE t.first_at >= ${ws} AND t.first_at < ${we}`;
-    const firstSubmit = firstSubRows[0]?.count ?? 0;
-
-    // 付费新增：本周支付成功的 paid 订单中 distinct 用户（排除内部）
-    const paidRows = await prisma.$queryRaw<{ count: number }[]>`
-      SELECT COUNT(DISTINCT o."userId")::int AS count
-      FROM "Order" o
-      JOIN "User" u ON u.id = o."userId"
-      WHERE o.status = 'paid'
-        AND o."paidAt" >= ${ws} AND o."paidAt" < ${we}
-        AND u."isInternal" = false AND u.role = 'user'`;
-    const paid = paidRows[0]?.count ?? 0;
-
-    return { uv, signup, firstSubmit, paid };
+  const uv = cohortRows.length;
+  if (uv === 0) {
+    return { uv: 0, signup: 0, firstSubmit: 0, paid: 0 };
   }
 
-  const [thisWeek, lastSame] = await Promise.all([
-    funnelFor(start, end),
-    funnelFor(lastStart, lastSameEnd),
-  ]);
+  const anonIds = cohortRows.map((r) => r.anonymousId);
 
-  return {
-    thisWeek,
-    lastSame,
-  };
+  // Step 2: 该 cohort 的 anonymousId 里，在 maturityEnd 之前注册成真实用户的
+  //   依赖 signup_submit（或任何登录态 event）把 anonymousId 与 userId 串起来
+  const linkedUsers = await prisma.$queryRaw<{ userId: number; createdAt: Date }[]>`
+    SELECT DISTINCT ON (e."anonymousId") e."userId", u."createdAt"
+    FROM "Event" e
+    JOIN "User" u ON u.id = e."userId"
+    WHERE e."anonymousId" = ANY(${anonIds}::text[])
+      AND e."userId" IS NOT NULL
+      AND u."isInternal" = false AND u.role = 'user'
+      AND u."createdAt" < ${maturityEnd}
+    ORDER BY e."anonymousId", u."createdAt" ASC`;
+
+  const signup = linkedUsers.length;
+  if (signup === 0) {
+    return { uv, signup: 0, firstSubmit: 0, paid: 0 };
+  }
+
+  const userIds = linkedUsers.map((r) => r.userId);
+
+  // Step 3: 这些用户在 maturityEnd 之前有任何提交
+  const submitted = await prisma.submission.findMany({
+    where: { userId: { in: userIds }, createdAt: { lt: maturityEnd } },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+  const firstSubmit = submitted.length;
+
+  // Step 4: 这些用户在 maturityEnd 之前有 paid 订单
+  const paidRows = await prisma.order.findMany({
+    where: {
+      userId: { in: userIds },
+      status: "paid",
+      paidAt: { not: null, lt: maturityEnd },
+    },
+    select: { userId: true },
+    distinct: ["userId"],
+  });
+
+  return { uv, signup, firstSubmit, paid: paidRows.length };
 }
 
-/** 目标级别分布（1-8 或 null/未填） */
+async function computeFunnel() {
+  const now = new Date();
+  const { start: thisStart, end: thisEnd } = currentWeek(now);
+  const { start: lastSameStart, end: lastSameEnd } = lastWeekSameProgress(now);
+
+  // 近 4 周成熟 cohort：[4 周前周一, 本周一) 的新 UV，观测到现在
+  const weekStarts = last8WeekStarts(now);
+  const fourWeeksStart = weekStarts[weekStarts.length - 5];
+
+  const [thisWeek, lastSame, rolling4w] = await Promise.all([
+    // 本周 cohort，观测到现在（maturity = 本周至今）
+    cohortFunnel(thisStart, thisEnd, now),
+    // 上周同期 cohort，观测到上周同期时点（同等成熟度对比）
+    cohortFunnel(lastSameStart, lastSameEnd, lastSameEnd),
+    // 近 4 周 cohort（本周之前 4 个完整周），观测到现在（至少 1 周成熟度）
+    cohortFunnel(fourWeeksStart, thisStart, now),
+  ]);
+
+  return { thisWeek, lastSame, rolling4w };
+}
+
+/** 级别分布：付费 vs 免费两组 */
 async function computeLevelDistribution() {
-  const rows = await prisma.user.groupBy({
-    by: ["targetLevel"],
+  const now = new Date();
+  const rows = await prisma.user.findMany({
     where: REAL_USER,
-    _count: { id: true },
-    orderBy: { targetLevel: "asc" },
+    select: { targetLevel: true, plan: true, planExpireAt: true },
   });
-  return rows.map((r) => ({
-    level: r.targetLevel, // null = 未填
-    count: r._count.id,
-  }));
+  const isPaid = (u: { plan: string; planExpireAt: Date | null }) =>
+    u.plan !== "free" && u.planExpireAt !== null && u.planExpireAt > now;
+
+  const buckets = new Map<number | "none", { paid: number; free: number }>();
+  const touch = (k: number | "none") => {
+    if (!buckets.has(k)) buckets.set(k, { paid: 0, free: 0 });
+    return buckets.get(k)!;
+  };
+  for (const u of rows) {
+    const key = u.targetLevel ?? "none";
+    const slot = touch(key);
+    if (isPaid(u)) slot.paid++;
+    else slot.free++;
+  }
+  return Array.from(buckets.entries())
+    .map(([level, v]) => ({
+      level: level === "none" ? null : (level as number),
+      paid: v.paid,
+      free: v.free,
+    }))
+    .sort((a, b) => {
+      if (a.level === null) return 1;
+      if (b.level === null) return -1;
+      return a.level - b.level;
+    });
 }
 
 export async function GET(request: NextRequest) {
@@ -219,7 +293,7 @@ export async function GET(request: NextRequest) {
 
     return Response.json(
       { northStar, funnel, levelDistribution },
-      { headers: { "Cache-Control": "private, max-age=300" } },
+      { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "unknown error";
