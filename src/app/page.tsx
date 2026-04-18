@@ -230,7 +230,7 @@ export default function LandingPage() {
           {/* 标题组 */}
           <div className="mt-10">
             <p
-              className="text-base font-semibold tracking-wide text-[#1d5bd6] sm:text-lg"
+              className="text-xl font-semibold tracking-wide text-[#1d5bd6] sm:text-2xl"
               style={{ fontFamily: "'Noto Serif SC', serif" }}
             >
               GESP AI 私教
