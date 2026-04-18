@@ -30,12 +30,13 @@ interface Problem {
 interface Sample { input: string; output: string; }
 
 interface JudgeResult {
-  input: string;
-  expectedOutput: string;
-  actualOutput: string;
+  input?: string;
+  expectedOutput?: string;
+  actualOutput?: string;
   status: string;
   time: string | null;
   memory: number | null;
+  isHidden: boolean;
 }
 
 interface RunSampleResult {
@@ -725,14 +726,16 @@ export default function ProblemDetailPage() {
                       {judgeResults.map((r, i) => (
                         <div key={i} className="rounded border p-2">
                           <div className="mb-1 flex items-center gap-3">
-                            <span className="text-sm font-medium text-gray-500">#{i + 1}</span>
+                            <span className="text-sm font-medium text-gray-500">
+                              {r.isHidden ? `隐藏点 #${i + 1}` : `样例 #${i + 1}`}
+                            </span>
                             <span className={`text-sm font-bold ${STATUS_COLORS[r.status] || "text-gray-600"}`}>
                               {STATUS_TEXT[r.status] || r.status}
                             </span>
                             {r.time && <span className="text-xs text-gray-400">{(parseFloat(r.time) * 1000).toFixed(0)}ms</span>}
                             {r.memory && <span className="text-xs text-gray-400">{r.memory}KB</span>}
                           </div>
-                          {r.status !== "AC" && (
+                          {r.status !== "AC" && !r.isHidden && (
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               <div>
                                 <div className="mb-0.5 font-medium text-gray-500">期望输出</div>
@@ -743,6 +746,9 @@ export default function ProblemDetailPage() {
                                 <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.actualOutput || "(无输出)"}</pre>
                               </div>
                             </div>
+                          )}
+                          {r.status !== "AC" && r.isHidden && (
+                            <div className="text-xs text-gray-400">隐藏测试点不展示具体数据，建议先用样例调试</div>
                           )}
                         </div>
                       ))}

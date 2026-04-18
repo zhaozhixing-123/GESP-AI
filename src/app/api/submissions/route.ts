@@ -4,11 +4,23 @@ import { getUserFromRequest } from "@/lib/auth";
 import { checkFreeLimit, getSubscriptionInfo } from "@/lib/subscription";
 import { judgeAll, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+// 防止通过提交接口批量爬取隐藏测试点
+const SUBMIT_RATE_LIMIT = { name: "problem_submit", windowMs: 60_000, maxRequests: 6 };
 
 export async function POST(request: NextRequest) {
   const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
+  }
+
+  const rl = checkRateLimit(SUBMIT_RATE_LIMIT, `user_${user.userId}`);
+  if (!rl.allowed) {
+    return Response.json(
+      { error: "提交过于频繁，请稍后再试" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+    );
   }
 
   try {
@@ -49,7 +61,8 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "题目测试数据异常，请联系管理员" }, { status: 500 });
     }
 
-    // 合并样例 + 额外测试点
+    // 合并样例 + 额外测试点（样例在前，用 sampleCount 区分）
+    const sampleCount = samples.length;
     const allTests = [...samples, ...extraTests];
 
     if (allTests.length === 0) {
@@ -59,13 +72,15 @@ export async function POST(request: NextRequest) {
     // 批量提交所有测试点，并行等待结果
     const judge0Results = await judgeAll(code, allTests.map((t) => t.input));
 
+    // 隐藏测试点（extraTests）只返回状态/时间/内存，不返回 input/expectedOutput/actualOutput，防止被爬取
     const results: Array<{
-      input: string;
-      expectedOutput: string;
-      actualOutput: string;
+      input?: string;
+      expectedOutput?: string;
+      actualOutput?: string;
       status: string;
       time: string | null;
       memory: number | null;
+      isHidden: boolean;
     }> = [];
 
     let overallStatus = "AC";
@@ -77,34 +92,46 @@ export async function POST(request: NextRequest) {
       const status = mapStatus(judge0Result);
       const actualOutput = normalizeOutput(judge0Result.stdout || "");
       const expectedOutput = normalizeOutput(allTests[idx].output);
+      const isHidden = idx >= sampleCount;
 
       // Judge0 "AC" 只表示程序正常运行，需要对比输出判断真正的 AC/WA
       let finalStatus = status;
       if (status === "AC") {
         finalStatus = actualOutput === expectedOutput ? "AC" : "WA";
       }
+
       // CE 时用错误信息替换实际输出
       if (finalStatus === "CE") {
-        results.push({
-          input: allTests[idx].input,
-          expectedOutput,
-          actualOutput: getErrorMessage(judge0Result),
-          status: finalStatus,
-          time: judge0Result.time,
-          memory: judge0Result.memory,
-        });
+        results.push(
+          isHidden
+            ? { status: "CE", time: judge0Result.time, memory: judge0Result.memory, isHidden: true }
+            : {
+                input: allTests[idx].input,
+                expectedOutput,
+                actualOutput: getErrorMessage(judge0Result),
+                status: "CE",
+                time: judge0Result.time,
+                memory: judge0Result.memory,
+                isHidden: false,
+              }
+        );
         overallStatus = "CE";
         break;
       }
 
-      results.push({
-        input: allTests[idx].input,
-        expectedOutput,
-        actualOutput,
-        status: finalStatus,
-        time: judge0Result.time,
-        memory: judge0Result.memory,
-      });
+      results.push(
+        isHidden
+          ? { status: finalStatus, time: judge0Result.time, memory: judge0Result.memory, isHidden: true }
+          : {
+              input: allTests[idx].input,
+              expectedOutput,
+              actualOutput,
+              status: finalStatus,
+              time: judge0Result.time,
+              memory: judge0Result.memory,
+              isHidden: false,
+            }
+      );
 
       if (judge0Result.time) totalTime += parseFloat(judge0Result.time) * 1000;
       if (judge0Result.memory) maxMemory = Math.max(maxMemory, judge0Result.memory);

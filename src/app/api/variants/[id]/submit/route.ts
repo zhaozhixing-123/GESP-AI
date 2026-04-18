@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { judgeAll, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+// 防止通过提交接口批量爬取隐藏测试点
+const VARIANT_SUBMIT_RATE_LIMIT = { name: "variant_submit", windowMs: 60_000, maxRequests: 6 };
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +14,14 @@ export async function POST(
 ) {
   const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "请先登录" }, { status: 401 });
+
+  const rl = checkRateLimit(VARIANT_SUBMIT_RATE_LIMIT, `user_${user.userId}`);
+  if (!rl.allowed) {
+    return Response.json(
+      { error: "提交过于频繁，请稍后再试" },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) } }
+    );
+  }
 
   const { id } = await params;
   const variantId = parseInt(id);
@@ -35,6 +47,7 @@ export async function POST(
 
     const samples: Array<{ input: string; output: string }>  = JSON.parse(variant.samples  || "[]");
     const extraTests: Array<{ input: string; output: string }> = JSON.parse(variant.testCases || "[]");
+    const sampleCount = samples.length;
     const allTests = [...samples, ...extraTests];
 
     if (allTests.length === 0) {
@@ -44,9 +57,10 @@ export async function POST(
     // 批量判题
     const judge0Results = await judgeAll(code, allTests.map((t) => t.input));
 
+    // 隐藏测试点只返回状态/时间/内存，防止被爬取
     const results: Array<{
-      input: string; expectedOutput: string; actualOutput: string;
-      status: string; time: string | null; memory: number | null;
+      input?: string; expectedOutput?: string; actualOutput?: string;
+      status: string; time: string | null; memory: number | null; isHidden: boolean;
     }> = [];
 
     let overallStatus = "AC";
@@ -58,16 +72,25 @@ export async function POST(
       const st = mapStatus(j);
       const actual   = normalizeOutput(j.stdout || "");
       const expected = normalizeOutput(allTests[idx].output);
+      const isHidden = idx >= sampleCount;
 
       let finalStatus = st === "AC" ? (actual === expected ? "AC" : "WA") : st;
 
       if (finalStatus === "CE") {
-        results.push({ input: allTests[idx].input, expectedOutput: expected, actualOutput: getErrorMessage(j), status: "CE", time: j.time, memory: j.memory });
+        results.push(
+          isHidden
+            ? { status: "CE", time: j.time, memory: j.memory, isHidden: true }
+            : { input: allTests[idx].input, expectedOutput: expected, actualOutput: getErrorMessage(j), status: "CE", time: j.time, memory: j.memory, isHidden: false }
+        );
         overallStatus = "CE";
         break;
       }
 
-      results.push({ input: allTests[idx].input, expectedOutput: expected, actualOutput: actual, status: finalStatus, time: j.time, memory: j.memory });
+      results.push(
+        isHidden
+          ? { status: finalStatus, time: j.time, memory: j.memory, isHidden: true }
+          : { input: allTests[idx].input, expectedOutput: expected, actualOutput: actual, status: finalStatus, time: j.time, memory: j.memory, isHidden: false }
+      );
       if (j.time) totalTime += parseFloat(j.time) * 1000;
       if (j.memory) maxMemory = Math.max(maxMemory, j.memory);
       if (finalStatus !== "AC" && overallStatus === "AC") overallStatus = finalStatus;
