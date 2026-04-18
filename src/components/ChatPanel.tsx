@@ -198,8 +198,28 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
       {/* 消息列表 */}
       <div className="flex-1 overflow-auto p-4 space-y-3">
         {messages.length === 0 && !streaming && (
-          <div className="py-8 text-center text-sm text-gray-400">
-            有问题就问 GESP AI 私教吧！我会引导你思考，但不会直接给答案哦。
+          <div className="space-y-3">
+            <div className="text-center text-sm text-gray-500">
+              有问题就问 GESP AI 私教吧！点一张卡片快速开聊，或者直接输入问题。
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { title: "思路引导", hint: "我没什么头绪，请一步步引导我想", prompt: "我看完题目没什么头绪，请一步步引导我自己想出思路，不要直接给答案。" },
+                { title: "算法选择", hint: "这道题适合用什么算法/数据结构？", prompt: "这道题属于哪一类问题？适合用什么算法或数据结构？请先不要直接告诉我解法，可以先问我几个引导性的问题。" },
+                { title: "边界检查", hint: "哪些边界容易漏？", prompt: "这道题有哪些常见的边界或特殊情况容易漏掉？请引导我一个个排查，不要直接给出完整检查表。" },
+                { title: "看我的代码", hint: "我卡住了，帮我看看代码哪里有问题", prompt: "我写到一半卡住了，请先别改代码，引导我自己定位问题可能在哪。" },
+              ].map((card) => (
+                <button
+                  key={card.title}
+                  onClick={() => sendMessage(card.prompt)}
+                  disabled={sending}
+                  className="rounded-lg border border-gray-200 bg-white p-3 text-left hover:border-blue-400 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  <div className="text-sm font-medium text-gray-900">{card.title}</div>
+                  <div className="mt-0.5 text-xs text-gray-500">{card.hint}</div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

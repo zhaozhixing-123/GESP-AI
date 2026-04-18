@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import CodeEditor, { DEFAULT_CODE } from "@/components/CodeEditor";
+import CodeEditor, { DEFAULT_CODE, defaultCodeForLevel } from "@/components/CodeEditor";
 import ChatPanel from "@/components/ChatPanel";
 import SubmissionDetailModal from "@/components/SubmissionDetailModal";
+import SubmissionDiffModal from "@/components/SubmissionDiffModal";
 import { STATUS_COLORS, STATUS_TEXT } from "@/lib/submission-status";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -82,6 +83,72 @@ const LEVEL_COLORS: Record<number, string> = {
   8: "bg-red-100 text-red-700",
 };
 
+/**
+ * 字符级 diff：找最长公共前缀/后缀，中间是差异部分。
+ * 对 GESP 输出（几十到几百字符）足够用，不依赖重型 diff 库。
+ */
+function splitCharDiff(e: string, a: string) {
+  let p = 0;
+  while (p < e.length && p < a.length && e[p] === a[p]) p++;
+  let qe = e.length, qa = a.length;
+  while (qe > p && qa > p && e[qe - 1] === a[qa - 1]) { qe--; qa--; }
+  return {
+    head: e.slice(0, p),
+    eMid: e.slice(p, qe),
+    aMid: a.slice(p, qa),
+    tail: e.slice(qe),
+  };
+}
+
+/** 期望/实际输出双栏 diff：行级对齐 + 差异行内字符级标注 */
+function DiffPair({ expected, actual }: { expected: string; actual: string }) {
+  const eLines = expected.split("\n");
+  const aLines = actual.split("\n");
+  const n = Math.max(eLines.length, aLines.length);
+  const rows = Array.from({ length: n }, (_, i) => {
+    const el = eLines[i] ?? "";
+    const al = aLines[i] ?? "";
+    return { e: el, a: al, same: el === al };
+  });
+
+  return (
+    <div className="grid grid-cols-2 gap-2 text-xs">
+      <div>
+        <div className="mb-0.5 font-medium text-gray-500">期望输出</div>
+        <pre className="overflow-auto rounded bg-gray-50 p-1.5 font-mono leading-5">
+          {rows.map((r, i) => {
+            if (r.same) return <div key={i}>{r.e || "\u00A0"}</div>;
+            const d = splitCharDiff(r.e, r.a);
+            return (
+              <div key={i} className="-mx-1 rounded bg-emerald-100 px-1">
+                {d.head}
+                {d.eMid && <span className="bg-emerald-300 font-semibold">{d.eMid}</span>}
+                {d.tail || (d.head || d.eMid ? "" : "\u00A0")}
+              </div>
+            );
+          })}
+        </pre>
+      </div>
+      <div>
+        <div className="mb-0.5 font-medium text-gray-500">实际输出</div>
+        <pre className="overflow-auto rounded bg-gray-50 p-1.5 font-mono leading-5">
+          {rows.map((r, i) => {
+            if (r.same) return <div key={i}>{r.a || "\u00A0"}</div>;
+            const d = splitCharDiff(r.e, r.a);
+            return (
+              <div key={i} className="-mx-1 rounded bg-rose-100 px-1">
+                {d.head}
+                {d.aMid && <span className="bg-rose-300 font-semibold">{d.aMid}</span>}
+                {d.tail || (d.head || d.aMid ? "" : "\u00A0")}
+              </div>
+            );
+          })}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function MdContent({ children }: { children: string }) {
   return (
     <div className="prose prose-sm max-w-none text-gray-700 prose-table:border-collapse prose-th:border prose-th:border-gray-300 prose-th:px-3 prose-th:py-1.5 prose-th:bg-gray-50 prose-td:border prose-td:border-gray-300 prose-td:px-3 prose-td:py-1.5">
@@ -126,11 +193,39 @@ export default function ProblemDetailPage() {
 
   // 查看历史提交
   const [viewingSubmissionId, setViewingSubmissionId] = useState<number | null>(null);
+  // 对比两次提交（newId 为较新的一次，oldId 为较旧的一次）
+  const [diffPair, setDiffPair] = useState<{ newId: number; oldId: number } | null>(null);
+
+  // WA 后的 AI 错因分析（流式）
+  const [errorAnalysis, setErrorAnalysis] = useState("");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+
+  // 变形题提示卡片
+  interface VariantInfo {
+    hasAny: boolean;
+    totalVariants: number;
+    unlockedVariants: Array<{ id: number; title: string; level: number; batch: number }>;
+    isPaid: boolean;
+  }
+  const [variantInfo, setVariantInfo] = useState<VariantInfo | null>(null);
+
+  // 知识点 tag 进度：用户在每个 tag 下的 AC/总题数
+  const [tagStats, setTagStats] = useState<Record<string, { ac: number; total: number }>>({});
+
+  // AC 后的下一题推荐
+  interface RecommendResp {
+    problem?: { id: number; luoguId: string; title: string; level: number; tags: string };
+    upgrade?: number;
+    reason: string;
+  }
+  const [recommend, setRecommend] = useState<RecommendResp | null>(null);
 
   function handleLoadSubmission(oldCode: string) {
     // 仅当编辑器里已经有非默认内容时才二次确认，避免误覆盖
     const current = code.trim();
-    const isDirty = current !== "" && current !== DEFAULT_CODE.trim();
+    const levelDefault = defaultCodeForLevel(problem?.level).trim();
+    const isDirty = current !== "" && current !== levelDefault;
     if (isDirty && !confirm("当前编辑器内容会被覆盖，确认载入？")) return;
     setCode(oldCode);
     setViewingSubmissionId(null);
@@ -194,19 +289,25 @@ export default function ProblemDetailPage() {
       .catch(() => {});
   }, [id]);
 
-  // 切题时加载本题暂存代码；没有则回落到默认模板
+  // 切题 / 拿到题目信息后，加载存档或按 level 回落到对应模板
+  // 1~4 级 → 启蒙模板；5~8 级 → 竞赛模板（万能头 + 关同步）
   useEffect(() => {
     if (!id || typeof window === "undefined") return;
     const saved = localStorage.getItem(`gesp_code_${id}`);
-    setCode(saved ?? DEFAULT_CODE);
-  }, [id]);
+    if (saved) {
+      setCode(saved);
+      return;
+    }
+    setCode(defaultCodeForLevel(problem?.level));
+  }, [id, problem?.level]);
 
-  // 编辑时防抖写回 localStorage；仍是默认模板就不写，避免污染
+  // 编辑时防抖写回 localStorage；仍是该题默认模板就不写，避免污染
   useEffect(() => {
     if (!id || typeof window === "undefined") return;
     const key = `gesp_code_${id}`;
+    const levelDefault = defaultCodeForLevel(problem?.level);
     const timer = setTimeout(() => {
-      if (code && code !== DEFAULT_CODE) {
+      if (code && code !== levelDefault) {
         try {
           localStorage.setItem(key, code);
         } catch {
@@ -217,7 +318,7 @@ export default function ProblemDetailPage() {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [code, id]);
+  }, [code, id, problem?.level]);
 
   async function handleToggleWrongBook() {
     if (wrongBookLoading) return;
@@ -305,6 +406,9 @@ export default function ProblemDetailPage() {
     setJudgeResults(null);
     setOverallStatus(null);
     setSubmitError("");
+    setErrorAnalysis("");
+    setAnalysisError("");
+    setVariantInfo(null);
     setActiveTab("judge");
 
     try {
@@ -334,6 +438,120 @@ export default function ProblemDetailPage() {
       setSubmitError("提交失败，请检查网络");
     }
     setSubmitting(false);
+  }
+
+  // 拉取该题 tag 进度（AC/总题数），用于标题栏 badge
+  useEffect(() => {
+    if (!problem) return;
+    let tags: string[] = [];
+    try { tags = JSON.parse(problem.tags || "[]"); } catch {}
+    if (tags.length === 0) return;
+    fetch(`/api/user/tag-stats?tags=${encodeURIComponent(tags.join(","))}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => { if (data.stats) setTagStats(data.stats); })
+      .catch(() => {});
+  }, [problem?.id]);
+
+  // Ctrl/Cmd+Enter 快速提交（LeetCode 风格）
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (!submitting && !running && code.trim()) handleSubmit();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [code, submitting, running]);
+
+  // WA 后拉取该题的变形题解锁状态（仅源题页）
+  useEffect(() => {
+    if (isVariantPage) return;
+    if (!overallStatus || overallStatus === "AC") return;
+    fetch(`/api/variants?sourceId=${numericId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => { if (!data.error) setVariantInfo(data); })
+      .catch(() => {});
+  }, [overallStatus, numericId, isVariantPage]);
+
+  // AC 后拉取下一题推荐（仅源题页；变形题通过自己的 flow 处理）
+  useEffect(() => {
+    if (isVariantPage) return;
+    if (overallStatus !== "AC") { setRecommend(null); return; }
+    fetch(`/api/problems/recommend?afterId=${numericId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => { if (!data.error) setRecommend(data); })
+      .catch(() => {});
+  }, [overallStatus, numericId, isVariantPage]);
+
+  // 触发 AI 错因分析（SSE 流）
+  async function handleGenerateAnalysis() {
+    if (analysisLoading) return;
+    setAnalysisLoading(true);
+    setAnalysisError("");
+    setErrorAnalysis("");
+    try {
+      const body = isVariantPage ? { variantId: numericId } : { problemId: numericId };
+      const res = await fetch("/api/wrongbook/analyze", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAnalysisError(data.message || data.error || "分析失败，请重试");
+        setAnalysisLoading(false);
+        return;
+      }
+      const reader = res.body?.getReader();
+      if (!reader) {
+        setAnalysisError("无法读取响应流");
+        setAnalysisLoading(false);
+        return;
+      }
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.text) setErrorAnalysis((prev) => prev + payload.text);
+            if (payload.error) setAnalysisError(payload.error);
+          } catch {}
+        }
+      }
+    } catch {
+      setAnalysisError("分析失败，请检查网络");
+    }
+    setAnalysisLoading(false);
+  }
+
+  // 对某个样例点问 AI（仅非隐藏、非 AC、非 CE 用）
+  function askAIAboutCase(r: JudgeResult) {
+    if (!problem) return;
+    const prompt = `我在做《${problem.title}》时，这个样例过不了：
+输入：
+${r.input ?? ""}
+期望输出：
+${r.expectedOutput ?? ""}
+我的输出：
+${r.actualOutput || "(无输出)"}
+
+请先不要直接改我的代码，引导我自己想想哪里可能出了问题。`;
+    setChatTrigger({ text: prompt, code, nonce: Date.now() });
+    setBottomTab("chat");
   }
 
   // 拖拽分隔线逻辑
@@ -464,11 +682,34 @@ export default function ProblemDetailPage() {
               ) : (
                 <span className="text-sm text-gray-400 font-mono">{problem.luoguId}</span>
               )}
-              {JSON.parse(problem.tags || "[]").map((tag: string) => (
-                <span key={tag} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700">
-                  {tag}
-                </span>
-              ))}
+              {JSON.parse(problem.tags || "[]").map((tag: string) => {
+                const s = tagStats[tag];
+                const ratio = s && s.total > 0 ? s.ac / s.total : 0;
+                // 颜色：灰=未开始，红=<30%，黄=30-70%，绿=≥70%
+                const toneClass = !s || s.total === 0
+                  ? "bg-sky-50 text-sky-700"
+                  : s.ac === 0
+                    ? "bg-rose-50 text-rose-700"
+                    : ratio >= 0.7
+                      ? "bg-emerald-50 text-emerald-700"
+                      : ratio >= 0.3
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-rose-50 text-rose-700";
+                return (
+                  <span
+                    key={tag}
+                    title={s ? `${tag}：已 AC ${s.ac} / 共 ${s.total} 道` : tag}
+                    className={`rounded-full px-2 py-0.5 text-xs ${toneClass}`}
+                  >
+                    {tag}
+                    {s && s.total > 0 && (
+                      <span className="ml-1 font-mono opacity-80">
+                        {s.ac}/{s.total}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
             </div>
 
             {/* 题目描述 */}
@@ -575,6 +816,7 @@ export default function ProblemDetailPage() {
               <button
                 onClick={handleSubmit}
                 disabled={busy}
+                title="Ctrl/Cmd + Enter 快速提交"
                 className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {submitting ? "判题中..." : "提交"}
@@ -685,16 +927,7 @@ export default function ProblemDetailPage() {
                                 <pre className="mb-1 max-h-24 overflow-auto rounded bg-red-50 p-2 text-xs font-mono text-red-700">{r.error}</pre>
                               )}
                               {r.status !== "AC" && r.status !== "CE" && (
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div>
-                                    <div className="mb-0.5 font-medium text-gray-500">期望输出</div>
-                                    <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.expectedOutput}</pre>
-                                  </div>
-                                  <div>
-                                    <div className="mb-0.5 font-medium text-gray-500">实际输出</div>
-                                    <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.actualOutput || "(无输出)"}</pre>
-                                  </div>
-                                </div>
+                                <DiffPair expected={r.expectedOutput} actual={r.actualOutput || ""} />
                               )}
                             </div>
                           ))}
@@ -748,6 +981,88 @@ export default function ProblemDetailPage() {
                           {STATUS_TEXT[overallStatus] || overallStatus}
                         </span>
                       </div>
+
+                      {/* 非 AC：AI 错因分析卡 */}
+                      {overallStatus !== "AC" && (
+                        <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                          {!errorAnalysis && !analysisLoading && !analysisError && (
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium text-rose-800">让 AI 老师帮你看看哪里出错了？</div>
+                                <div className="mt-0.5 text-xs text-rose-600">结合本次提交代码，定位错误类型并给出自检清单</div>
+                              </div>
+                              <button
+                                onClick={handleGenerateAnalysis}
+                                className="ml-3 shrink-0 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
+                              >
+                                AI 错因分析
+                              </button>
+                            </div>
+                          )}
+                          {(analysisLoading || errorAnalysis) && (
+                            <div>
+                              <div className="mb-2 flex items-center gap-2">
+                                <span className="text-sm font-medium text-rose-800">AI 错因分析</span>
+                                {analysisLoading && <span className="text-xs text-rose-500">生成中...</span>}
+                              </div>
+                              <MdContent>
+                                {errorAnalysis.replace(/【错误类型：.+?】\n?/, "").trimStart() || "…"}
+                              </MdContent>
+                            </div>
+                          )}
+                          {analysisError && (
+                            <div className="mt-2 text-xs text-rose-700">{analysisError}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 非 AC & 源题页：变形题入口卡 */}
+                      {overallStatus !== "AC" && !isVariantPage && variantInfo && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                          {!variantInfo.isPaid ? (
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-sm font-medium text-amber-800">订阅解锁变形题，对症巩固</div>
+                                <div className="mt-0.5 text-xs text-amber-700">做错之后练 2~4 道同考点变形题，彻底吃透</div>
+                              </div>
+                              <button
+                                onClick={() => router.push("/payment")}
+                                className="ml-3 shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+                              >
+                                查看会员套餐
+                              </button>
+                            </div>
+                          ) : !variantInfo.hasAny ? (
+                            <div>
+                              <div className="text-sm font-medium text-amber-800">AI 正在为你准备变形题</div>
+                              <div className="mt-0.5 text-xs text-amber-700">稍后再回来看看，就可以巩固同类型题目了</div>
+                            </div>
+                          ) : variantInfo.unlockedVariants.length === 0 ? (
+                            <div className="text-sm text-amber-800">变形题即将就绪，请稍后刷新</div>
+                          ) : (
+                            <div>
+                              <div className="mb-2 flex items-center gap-2">
+                                <span className="text-sm font-medium text-amber-800">已解锁变形题，去练一练？</span>
+                                <span className="text-xs text-amber-600">
+                                  {variantInfo.unlockedVariants.length}/{variantInfo.totalVariants}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {variantInfo.unlockedVariants.map((v) => (
+                                  <button
+                                    key={v.id}
+                                    onClick={() => router.push(`/problems/v${v.id}`)}
+                                    className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                                  >
+                                    {v.title}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {judgeResults.map((r, i) => (
                         <div key={i} className="rounded border p-2">
                           <div className="mb-1 flex items-center gap-3">
@@ -759,18 +1074,17 @@ export default function ProblemDetailPage() {
                             </span>
                             {r.time && <span className="text-xs text-gray-400">{(parseFloat(r.time) * 1000).toFixed(0)}ms</span>}
                             {r.memory && <span className="text-xs text-gray-400">{r.memory}KB</span>}
+                            {!r.isHidden && r.status !== "AC" && r.status !== "CE" && (
+                              <button
+                                onClick={() => askAIAboutCase(r)}
+                                className="ml-auto rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                              >
+                                让 AI 帮我看这个样例
+                              </button>
+                            )}
                           </div>
                           {r.status !== "AC" && !r.isHidden && (
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <div className="mb-0.5 font-medium text-gray-500">期望输出</div>
-                                <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.expectedOutput}</pre>
-                              </div>
-                              <div>
-                                <div className="mb-0.5 font-medium text-gray-500">实际输出</div>
-                                <pre className="rounded bg-gray-50 p-1.5 font-mono">{r.actualOutput || "(无输出)"}</pre>
-                              </div>
-                            </div>
+                            <DiffPair expected={r.expectedOutput || ""} actual={r.actualOutput || ""} />
                           )}
                           {r.status !== "AC" && r.isHidden && (
                             <div className="text-xs text-gray-400">隐藏测试点不展示具体数据，建议先用样例调试</div>
@@ -801,6 +1115,43 @@ export default function ProblemDetailPage() {
                           </div>
                         </div>
                       )}
+
+                      {/* AC 后推荐下一题（弱点驱动） */}
+                      {overallStatus === "AC" && recommend && (
+                        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                          {recommend.problem ? (
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs text-indigo-600">推荐下一题</div>
+                                <div className="mt-0.5 truncate text-sm font-medium text-indigo-900">
+                                  {recommend.problem.title}
+                                </div>
+                                <div className="mt-0.5 text-xs text-indigo-700">{recommend.reason}</div>
+                              </div>
+                              <button
+                                onClick={() => router.push(`/problems/${recommend.problem!.id}`)}
+                                className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                              >
+                                去挑战
+                              </button>
+                            </div>
+                          ) : recommend.upgrade ? (
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-medium text-indigo-900">🎉 {recommend.reason}</div>
+                              </div>
+                              <button
+                                onClick={() => router.push(`/problems?level=${recommend.upgrade}`)}
+                                className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                              >
+                                挑战 {recommend.upgrade} 级
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-indigo-900">🎉 {recommend.reason}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -809,28 +1160,41 @@ export default function ProblemDetailPage() {
                     <div>
                       <h3 className="mb-2 text-sm font-semibold text-gray-900">提交记录</h3>
                       <div className="space-y-1">
-                        {submissions.map((s) => (
-                          <div key={s.id} className="flex items-center justify-between rounded border px-3 py-1.5 text-sm">
-                            <span className={`font-bold ${STATUS_COLORS[s.status] || "text-gray-600"}`}>
-                              {STATUS_TEXT[s.status] || s.status}
-                            </span>
-                            <div className="flex items-center gap-3 text-xs text-gray-400">
-                              {s.timeUsed != null && <span>{s.timeUsed}ms</span>}
-                              {s.memoryUsed != null && <span>{s.memoryUsed}KB</span>}
-                              <span>
-                                {new Date(s.createdAt).toLocaleString("zh-CN", {
-                                  month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
-                                })}
+                        {submissions.map((s, idx) => {
+                          // 列表按时间降序，idx+1 是上一次（更旧）
+                          const older = submissions[idx + 1];
+                          return (
+                            <div key={s.id} className="flex items-center justify-between rounded border px-3 py-1.5 text-sm">
+                              <span className={`font-bold ${STATUS_COLORS[s.status] || "text-gray-600"}`}>
+                                {STATUS_TEXT[s.status] || s.status}
                               </span>
-                              <button
-                                onClick={() => setViewingSubmissionId(s.id)}
-                                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
-                              >
-                                查看代码
-                              </button>
+                              <div className="flex items-center gap-3 text-xs text-gray-400">
+                                {s.timeUsed != null && <span>{s.timeUsed}ms</span>}
+                                {s.memoryUsed != null && <span>{s.memoryUsed}KB</span>}
+                                <span>
+                                  {new Date(s.createdAt).toLocaleString("zh-CN", {
+                                    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+                                  })}
+                                </span>
+                                {older && (
+                                  <button
+                                    onClick={() => setDiffPair({ newId: s.id, oldId: older.id })}
+                                    className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+                                    title="与上一次提交对比代码"
+                                  >
+                                    vs 上一次
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => setViewingSubmissionId(s.id)}
+                                  className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+                                >
+                                  查看代码
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -856,6 +1220,15 @@ export default function ProblemDetailPage() {
           variant={isVariantPage}
           onClose={() => setViewingSubmissionId(null)}
           onLoad={handleLoadSubmission}
+        />
+      )}
+
+      {diffPair && (
+        <SubmissionDiffModal
+          newId={diffPair.newId}
+          oldId={diffPair.oldId}
+          variant={isVariantPage}
+          onClose={() => setDiffPair(null)}
         />
       )}
     </div>

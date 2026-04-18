@@ -18,8 +18,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { problemId } = await request.json();
-    if (!problemId) return Response.json({ error: "缺少 problemId" }, { status: 400 });
+    const { problemId, variantId } = await request.json();
+    if (!problemId && !variantId) {
+      return Response.json({ error: "缺少 problemId 或 variantId" }, { status: 400 });
+    }
 
     // 免费用户限 1 次错因分析
     const sub = await getSubscriptionInfo(user.userId);
@@ -37,7 +39,8 @@ export async function POST(request: NextRequest) {
 
     const stream = await streamWrongCodeAnalysis({
       userId: user.userId,
-      problemId: parseInt(problemId),
+      problemId: problemId ? parseInt(problemId) : undefined,
+      variantId: variantId ? parseInt(variantId) : undefined,
     });
 
     return new Response(stream, {
