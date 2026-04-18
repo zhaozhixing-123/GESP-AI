@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { trackEvent } from "@/lib/analytics";
 
 type Step = "email" | "info";
 
@@ -100,6 +101,9 @@ export default function RegisterPage() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+      trackEvent("signup_submit", {
+        metadata: { targetLevel: targetLevel || null },
+      });
       router.push("/problems?welcome=1");
     } catch {
       setError("网络错误，请重试");

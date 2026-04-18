@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { trackEvent } from "@/lib/analytics";
 
 // ─── 常量 ──────────────────────────────────────────────────────────────────────
 
@@ -180,7 +181,9 @@ export default function LandingPage() {
   useEffect(() => {
     if (typeof window !== "undefined" && localStorage.getItem("token")) {
       router.replace("/problems");
+      return;
     }
+    trackEvent("page_view", { path: "/" });
   }, [router]);
 
   const fadeCompare = useFadeIn();

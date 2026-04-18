@@ -3,12 +3,14 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import { trackEvent } from "@/lib/analytics";
 
 export default function PaymentSuccessPage() {
   const router = useRouter();
 
   // 确保 localStorage 中的用户信息已包含最新订阅状态
   useEffect(() => {
+    trackEvent("pay_success_client", { path: "/payment/success" });
     const token = localStorage.getItem("token");
     if (!token) return;
     fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })

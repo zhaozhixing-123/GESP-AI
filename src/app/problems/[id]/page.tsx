@@ -13,6 +13,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { trackEvent } from "@/lib/analytics";
 
 interface Problem {
   id: number;
@@ -259,6 +260,10 @@ export default function ProblemDetailPage() {
         setProblem(data);
         const samples = JSON.parse(data.samples || "[]");
         if (samples.length > 0) setRunInput(samples[0].input);
+        trackEvent("problem_open", {
+          problemId: numericId,
+          metadata: { isVariant: isVariantPage, level: data.level },
+        });
       } else {
         setLoading(false);
       }
