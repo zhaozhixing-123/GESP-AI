@@ -99,13 +99,13 @@ export function computeCostUsd(model: string, usage: AnthropicUsage): number {
   return cost;
 }
 
-/** 成功调用：从 Anthropic 响应提取 usage 并落库 */
+/** 成功调用：从 Anthropic 响应提取 usage 并落库；返回新纪录 id 供反馈关联 */
 export async function logLlmSuccess(params: {
   purpose: LlmPurpose;
   model: string;
   usage: AnthropicUsage;
   startedAt: number;
-}): Promise<void> {
+}): Promise<{ id: number } | null> {
   try {
     const { purpose, model, usage, startedAt } = params;
     const input = usage.input_tokens ?? 0;
@@ -116,7 +116,7 @@ export async function logLlmSuccess(params: {
       usage.cache_creation_input_tokens ??
       0;
     const cw1h = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0;
-    await prisma.llmCall.create({
+    const row = await prisma.llmCall.create({
       data: {
         purpose,
         model,
@@ -130,10 +130,13 @@ export async function logLlmSuccess(params: {
         costUsd: computeCostUsd(model, usage),
         latencyMs: Math.max(0, Date.now() - startedAt),
       },
+      select: { id: true },
     });
+    return row;
   } catch (e) {
     // 埋点失败不影响业务
     console.error("[llmCost] logLlmSuccess failed", e);
+    return null;
   }
 }
 

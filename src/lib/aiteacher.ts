@@ -408,26 +408,33 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
           }
         }
 
-        // 流结束，保存助手回复
-        await prisma.chatHistory.create({
-          data: {
-            userId:    ctx.userId,
-            problemId: ctx.variantId ? null : ctx.problemId,
-            variantId: ctx.variantId ?? null,
-            role:    "assistant",
-            content: fullResponse,
-          },
-        });
-
+        // 流结束：先记一次 LlmCall，再把 assistant 消息连同 llmCallId 一起落库，
+        // 这样反馈就能 JOIN 回 LlmCall 做按 purpose/model 的切片。
         const finalMsg = await stream.finalMessage();
-        await logLlmSuccess({
+        const call = await logLlmSuccess({
           purpose: "chat",
           model: AI_TEACHER_MODEL,
           usage: finalMsg.usage,
           startedAt,
         });
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
+        const assistantMsg = await prisma.chatHistory.create({
+          data: {
+            userId:    ctx.userId,
+            problemId: ctx.variantId ? null : ctx.problemId,
+            variantId: ctx.variantId ?? null,
+            role:    "assistant",
+            content: fullResponse,
+            llmCallId: call?.id ?? null,
+          },
+          select: { id: true },
+        });
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          done: true,
+          model: AI_TEACHER_MODEL_DISPLAY,
+          chatHistoryId: assistantMsg.id,
+        })}\n\n`));
         controller.close();
       } catch (e: any) {
         console.error("[AITeacher] Stream error:", e);

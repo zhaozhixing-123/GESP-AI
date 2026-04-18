@@ -7,9 +7,203 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 
+interface FeedbackState {
+  vote: "up" | "down";
+  reasons: string[];
+  comment: string | null;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
+  chatHistoryId?: number;              // 仅 assistant 有值
+  feedback?: FeedbackState | null;     // 仅 assistant 有值
+}
+
+const FEEDBACK_REASONS = ["不准确", "太浅", "听不懂", "跑题", "其他"] as const;
+
+function ChatFeedback({
+  chatHistoryId,
+  token,
+  initial,
+  onChange,
+}: {
+  chatHistoryId: number;
+  token: string | null;
+  initial: FeedbackState | null;
+  onChange: (next: FeedbackState | null) => void;
+}) {
+  const [vote, setVote] = useState<FeedbackState["vote"] | null>(initial?.vote ?? null);
+  const [reasons, setReasons] = useState<string[]>(initial?.reasons ?? []);
+  const [comment, setComment] = useState<string>(initial?.comment ?? "");
+  const [expanded, setExpanded] = useState<boolean>(
+    initial?.vote === "down" && (initial?.reasons.length ?? 0) === 0,
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+  async function handleVote(next: "up" | "down") {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ targetType: "chat", targetId: chatHistoryId, vote: next }),
+      });
+      if (!res.ok) throw new Error("fail");
+      const data = (await res.json()) as { vote: "up" | "down" | null };
+      setVote(data.vote);
+      if (data.vote === null || data.vote === "up") {
+        // toggle 清除 或 切到赞 → 清空原因
+        setReasons([]);
+        setComment("");
+        setExpanded(false);
+      } else if (data.vote === "down") {
+        // 刚点下踩 → 展开原因区让用户选
+        setExpanded(true);
+      }
+      onChange(data.vote ? { vote: data.vote, reasons: [], comment: null } : null);
+    } catch {
+      setSavedMsg("提交失败，请重试");
+      setTimeout(() => setSavedMsg(""), 2000);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function toggleReason(r: string) {
+    setReasons((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
+  }
+
+  async function submitReasons() {
+    if (submitting) return;
+    if (reasons.length === 0) return;
+    if (reasons.includes("其他") && !comment.trim()) {
+      setSavedMsg("选择「其他」时请写一句话");
+      setTimeout(() => setSavedMsg(""), 2000);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          targetType: "chat",
+          targetId: chatHistoryId,
+          reasons,
+          comment: reasons.includes("其他") ? comment.trim() : undefined,
+        }),
+      });
+      if (!res.ok) throw new Error("fail");
+      setSavedMsg("已反馈，谢谢");
+      setExpanded(false);
+      onChange({ vote: "down", reasons, comment: reasons.includes("其他") ? comment.trim() : null });
+      setTimeout(() => setSavedMsg(""), 2000);
+    } catch {
+      setSavedMsg("提交失败，请重试");
+      setTimeout(() => setSavedMsg(""), 2000);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const baseBtn = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition disabled:opacity-50";
+  const activeUp = "border-blue-400 bg-blue-50 text-blue-700";
+  const activeDown = "border-rose-400 bg-rose-50 text-rose-700";
+  const idle = "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700";
+
+  return (
+    <div className="mt-1 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => handleVote("up")}
+          disabled={submitting}
+          className={`${baseBtn} ${vote === "up" ? activeUp : idle}`}
+          aria-label="赞"
+        >
+          <span>👍</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleVote("down")}
+          disabled={submitting}
+          className={`${baseBtn} ${vote === "down" ? activeDown : idle}`}
+          aria-label="踩"
+        >
+          <span>👎</span>
+        </button>
+        {vote === "down" && !expanded && (reasons.length > 0 || savedMsg) && (
+          <span className="text-xs text-gray-400">
+            {savedMsg || `已选 ${reasons.length} 项`}
+            {reasons.length > 0 && !savedMsg && (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="ml-1 text-blue-600 hover:underline"
+              >
+                修改
+              </button>
+            )}
+          </span>
+        )}
+        {savedMsg && !(vote === "down" && !expanded) && (
+          <span className="text-xs text-gray-400">{savedMsg}</span>
+        )}
+      </div>
+
+      {vote === "down" && expanded && (
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+          <div className="flex flex-wrap gap-1">
+            {FEEDBACK_REASONS.map((r) => {
+              const on = reasons.includes(r);
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => toggleReason(r)}
+                  className={`${baseBtn} ${on ? "border-rose-400 bg-rose-50 text-rose-700" : idle}`}
+                >
+                  {r}
+                </button>
+              );
+            })}
+          </div>
+          {reasons.includes("其他") && (
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              maxLength={200}
+              rows={2}
+              placeholder="一句话描述（最多 200 字）"
+              className="mt-1.5 w-full resize-none rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none"
+            />
+          )}
+          <div className="mt-1.5 flex justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs text-gray-500 hover:text-gray-700"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={submitReasons}
+              disabled={submitting || reasons.length === 0}
+              className="rounded-full bg-blue-600 px-2.5 py-0.5 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              提交
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const QUICK_PROMPTS = [
@@ -129,6 +323,7 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
+      let chatHistoryId: number | undefined;
 
       if (reader) {
         while (true) {
@@ -148,6 +343,9 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
               }
               if (data.done) {
                 setModel(data.model || "");
+                if (typeof data.chatHistoryId === "number") {
+                  chatHistoryId = data.chatHistoryId;
+                }
               }
               if (data.error) {
                 fullText += `\n\n[错误: ${data.error}]`;
@@ -158,9 +356,12 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
         }
       }
 
-      // 流结束，把流式内容转为正式消息
+      // 流结束，把流式内容转为正式消息（携带 chatHistoryId 以便挂反馈组件）
       if (fullText) {
-        setMessages((prev) => [...prev, { role: "assistant", content: fullText }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: fullText, chatHistoryId, feedback: null },
+        ]);
       }
       setStreaming("");
     } catch {
@@ -227,21 +428,37 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
 
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800"
-              }`}
-            >
-              {msg.role === "assistant" ? (
-                <div className="prose prose-sm max-w-none prose-p:my-1 prose-pre:my-1">
-                  <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {msg.content}
-                  </Markdown>
-                </div>
-              ) : (
-                <div className="whitespace-pre-wrap">{msg.content}</div>
+            <div className={`max-w-[85%] ${msg.role === "user" ? "" : "w-full"}`}>
+              <div
+                className={`rounded-lg px-3 py-2 text-sm ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-pre:my-1">
+                    <Markdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {msg.content}
+                    </Markdown>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                )}
+              </div>
+              {msg.role === "assistant" && msg.chatHistoryId !== undefined && (
+                <ChatFeedback
+                  chatHistoryId={msg.chatHistoryId}
+                  token={token}
+                  initial={msg.feedback ?? null}
+                  onChange={(next) => {
+                    setMessages((prev) =>
+                      prev.map((m, idx) =>
+                        idx === i ? { ...m, feedback: next } : m,
+                      ),
+                    );
+                  }}
+                />
               )}
             </div>
           </div>

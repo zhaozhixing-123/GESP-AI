@@ -36,6 +36,7 @@ model User {
   variantUnlocks      VariantUnlock[]
   variantSubmissions  VariantSubmission[]
   dailyFocusLogs     DailyFocusLog[]
+  feedbacks           Feedback[]
 }
 
 model Problem {
@@ -109,16 +110,20 @@ model WrongBookAnalysis {
 }
 
 model ChatHistory {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  problemId Int?                // null 时表示变形题对话
-  variantId Int?                // 变形题 ID（与 problemId 二选一）
-  role      String             // user | assistant
-  content   String
-  createdAt DateTime @default(now())
-  user      User            @relation(fields: [userId], references: [id])
-  problem   Problem?        @relation(fields: [problemId], references: [id])
-  variant   VariantProblem? @relation(fields: [variantId], references: [id])
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  problemId  Int?                // null 时表示变形题对话
+  variantId  Int?                // 变形题 ID（与 problemId 二选一）
+  role       String             // user | assistant
+  content    String
+  llmCallId  Int?               // 关联的 LlmCall（仅 role='assistant' 时有值）
+  createdAt  DateTime @default(now())
+  user       User            @relation(fields: [userId], references: [id])
+  problem    Problem?        @relation(fields: [problemId], references: [id])
+  variant    VariantProblem? @relation(fields: [variantId], references: [id])
+  llmCall    LlmCall?        @relation(fields: [llmCallId], references: [id])
+
+  @@index([llmCallId])
 }
 
 model Order {
@@ -249,9 +254,34 @@ model LlmCall {
   errorMsg               String?
   createdAt              DateTime @default(now())
 
+  chatHistories          ChatHistory[]
+  feedbacks              Feedback[]
+
   @@index([createdAt])
   @@index([purpose, createdAt])
   @@index([status, createdAt])
+}
+
+// ───── 用户显式反馈（👍👎 + 原因） ─────
+
+model Feedback {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  targetType  String                              // chat | wrongbook_analysis | variant | exam_review
+  targetId    Int                                 // 目标实体 ID（当前 targetType='chat' 时为 ChatHistory.id）
+  llmCallId   Int?                                // 冗余索引，用于按 purpose/model 切片
+  vote        String                              // up | down
+  reasons     String?                             // JSON array；仅 vote='down' 有值
+  comment     String?                             // 仅 "其他" 选中时的一句话
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+  llmCall     LlmCall? @relation(fields: [llmCallId], references: [id])
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@index([llmCallId])
 }
 
 // ───── 邮箱验证码 ─────

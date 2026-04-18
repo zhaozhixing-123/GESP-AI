@@ -152,10 +152,44 @@ export async function GET(request: NextRequest) {
       ? { userId: user.userId, variantId: parseInt(variantId) }
       : { userId: user.userId, problemId: parseInt(problemId!) };
 
-    const messages = await prisma.chatHistory.findMany({
+    const rows = await prisma.chatHistory.findMany({
       where,
       orderBy: { createdAt: "asc" },
-      select: { role: true, content: true, createdAt: true },
+      select: { id: true, role: true, content: true, createdAt: true },
+    });
+
+    // 批量拉当前用户对这些 assistant 消息的历史反馈，回显到 UI
+    const assistantIds = rows.filter((r) => r.role === "assistant").map((r) => r.id);
+    const feedbacks = assistantIds.length > 0
+      ? await prisma.feedback.findMany({
+          where: {
+            userId: user.userId,
+            targetType: "chat",
+            targetId: { in: assistantIds },
+          },
+          select: { targetId: true, vote: true, reasons: true, comment: true },
+        })
+      : [];
+    const fbMap = new Map(feedbacks.map((f) => [f.targetId, f]));
+
+    const messages = rows.map((r) => {
+      if (r.role === "assistant") {
+        const fb = fbMap.get(r.id);
+        return {
+          role: r.role,
+          content: r.content,
+          createdAt: r.createdAt,
+          chatHistoryId: r.id,
+          feedback: fb
+            ? {
+                vote: fb.vote,
+                reasons: fb.reasons ? (JSON.parse(fb.reasons) as string[]) : [],
+                comment: fb.comment,
+              }
+            : null,
+        };
+      }
+      return { role: r.role, content: r.content, createdAt: r.createdAt };
     });
 
     return Response.json({ messages });
