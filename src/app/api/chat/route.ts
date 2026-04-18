@@ -74,6 +74,12 @@ export async function POST(request: NextRequest) {
       activeUsers.delete(user.userId);
     };
 
+    // 拉取用户目标级别，用于决定 AI 老师档位
+    const userRow = await prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { targetLevel: true },
+    });
+
     let stream: ReadableStream<Uint8Array>;
     try {
       stream = await chat({
@@ -82,6 +88,7 @@ export async function POST(request: NextRequest) {
         userId:  user.userId,
         message: message.trim(),
         code,
+        targetLevel: userRow?.targetLevel ?? null,
       });
     } catch (e) {
       releaseLock();
