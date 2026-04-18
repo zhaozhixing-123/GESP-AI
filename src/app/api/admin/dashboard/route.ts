@@ -67,6 +67,29 @@ async function paidInRange(start: Date | null, end: Date | null): Promise<number
   return Number(rows[0]?.c ?? 0);
 }
 
+/** 收入（元）：期内 paid 订单 amount 之和，排除内部/管理员，分→元 */
+async function revenueInRange(start: Date | null, end: Date | null): Promise<number> {
+  let rows: { s: bigint | null }[];
+  if (start && end) {
+    rows = await prisma.$queryRaw<{ s: bigint | null }[]>`
+      SELECT COALESCE(SUM(o.amount), 0)::bigint AS s
+      FROM "Order" o
+      JOIN "User" u ON u.id = o."userId"
+      WHERE o.status = 'paid'
+        AND u."isInternal" = false AND u.role = 'user'
+        AND o."paidAt" >= ${start} AND o."paidAt" < ${end}`;
+  } else {
+    rows = await prisma.$queryRaw<{ s: bigint | null }[]>`
+      SELECT COALESCE(SUM(o.amount), 0)::bigint AS s
+      FROM "Order" o
+      JOIN "User" u ON u.id = o."userId"
+      WHERE o.status = 'paid'
+        AND u."isInternal" = false AND u.role = 'user'`;
+  }
+  const cents = Number(rows[0]?.s ?? 0);
+  return cents / 100;
+}
+
 /** 自学用户数：期内付费且该用户曾 AC 过至少一道题（AC 时间不限） */
 async function selfLearnInRange(start: Date | null, end: Date | null): Promise<number> {
   let rows: { c: bigint }[];
@@ -97,24 +120,55 @@ async function selfLearnInRange(start: Date | null, end: Date | null): Promise<n
   return Number(rows[0]?.c ?? 0);
 }
 
-/** 订阅类型分布（含内部赠阅）：当前时刻快照 */
+/**
+ * 订阅类型分布（当前时刻快照）
+ *
+ * 口径：
+ *   - 月/季/年订阅：非内部账号、当前订阅未过期、且存在至少一笔 status='paid' 的订单（真付费）
+ *   - 内部赠阅：isInternal=true 的账号 + 非内部但 plan≠free 未过期却无 paid 订单的账号（admin 后台手动设的订阅）
+ */
 async function subscriptionTypeDistribution() {
   const now = new Date();
-  const [monthly, quarterly, yearly, internal] = await Promise.all([
-    prisma.user.count({
-      where: { role: "user", isInternal: false, plan: "monthly", planExpireAt: { gt: now } },
-    }),
-    prisma.user.count({
-      where: { role: "user", isInternal: false, plan: "quarterly", planExpireAt: { gt: now } },
-    }),
-    prisma.user.count({
-      where: { role: "user", isInternal: false, plan: "yearly", planExpireAt: { gt: now } },
-    }),
+
+  const countPaidPlan = async (plan: "monthly" | "quarterly" | "yearly") => {
+    const rows = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(DISTINCT u.id)::bigint AS c
+      FROM "User" u
+      WHERE u.role = 'user' AND u."isInternal" = false
+        AND u.plan = ${plan}
+        AND u."planExpireAt" > ${now}
+        AND EXISTS (
+          SELECT 1 FROM "Order" o
+          WHERE o."userId" = u.id AND o.status = 'paid'
+        )`;
+    return Number(rows[0]?.c ?? 0);
+  };
+
+  const [monthly, quarterly, yearly, internalExplicit, adminGranted] = await Promise.all([
+    countPaidPlan("monthly"),
+    countPaidPlan("quarterly"),
+    countPaidPlan("yearly"),
     prisma.user.count({
       where: { role: "user", isInternal: true },
     }),
+    prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(DISTINCT u.id)::bigint AS c
+      FROM "User" u
+      WHERE u.role = 'user' AND u."isInternal" = false
+        AND u.plan <> 'free'
+        AND u."planExpireAt" > ${now}
+        AND NOT EXISTS (
+          SELECT 1 FROM "Order" o
+          WHERE o."userId" = u.id AND o.status = 'paid'
+        )`.then((rows) => Number(rows[0]?.c ?? 0)),
   ]);
-  return { monthly, quarterly, yearly, internal };
+
+  return {
+    monthly,
+    quarterly,
+    yearly,
+    internal: internalExplicit + adminGranted,
+  };
 }
 
 /** 目标等级分布：1-8 + 未填；注册用户(排除内部/管理员)的 targetLevel 计数 */
@@ -141,6 +195,7 @@ async function computeBasic() {
     regY, reg7, regT,
     payY, pay7, payT,
     selfY, self7, selfT,
+    revY, rev7, revT,
     subDist, levelDist,
   ] = await Promise.all([
     registeredInRange(yStart, yEnd),
@@ -152,6 +207,9 @@ async function computeBasic() {
     selfLearnInRange(yStart, yEnd),
     selfLearnInRange(sevenAgo, now),
     selfLearnInRange(null, null),
+    revenueInRange(yStart, yEnd),
+    revenueInRange(sevenAgo, now),
+    revenueInRange(null, null),
     subscriptionTypeDistribution(),
     targetLevelDistribution(),
   ]);
@@ -162,6 +220,7 @@ async function computeBasic() {
     registered: { yesterday: regY, last7d: reg7, total: regT },
     paid: { yesterday: payY, last7d: pay7, total: payT },
     selfLearn: { yesterday: selfY, last7d: self7, total: selfT },
+    revenue: { yesterday: revY, last7d: rev7, total: revT },
     paidConvRate: {
       yesterday: safeRatio(payY, regY),
       last7d: safeRatio(pay7, reg7),

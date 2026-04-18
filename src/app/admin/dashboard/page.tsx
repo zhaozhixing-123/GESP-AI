@@ -15,6 +15,7 @@ interface BasicData {
   registered: BasicTriple;
   paid: BasicTriple;
   selfLearn: BasicTriple;
+  revenue: BasicTriple;
   paidConvRate: BasicTriple;
   selfLearnConvRate: BasicTriple;
   subscriptionTypes: { monthly: number; quarterly: number; yearly: number; internal: number };
@@ -87,12 +88,14 @@ const METRIC_HINTS = {
     "期内有过「paid」状态订单的真实用户去重计数。「昨日」= 昨日自然日内 paidAt 落入的 distinct 用户；「过去 7 天」= 近 7×24h；「历史累计」= 所有曾付过款的用户去重数。不含内部赠阅与管理员。",
   selfLearn:
     "付费用户且至少 AC 过一道题（提交状态为 AC）。分子限定付费订单落在对应窗口内，AC 记录时间不限。反映付费后真正开始自学的人群规模。",
+  revenue:
+    "期内 status=paid 订单的 amount 总和（分→元）。昨日 = 昨日自然日 paidAt 落入的订单金额；过去 7 天 = 近 7×24h；历史累计 = 所有真付费订单总和。不含内部赠阅与管理员。",
   paidConv:
     "付费用户数 ÷ 注册用户数。衡量注册漏斗末端：每 100 个新注册里最终付费的比例（同窗口内）。",
   selfLearnConv:
     "自学用户数 ÷ 付费用户数。衡量付费后激活：付费用户中真正开始学习（AC ≥ 1 题）的比例。",
   subTypes:
-    "当前时点有效付费订阅的套餐构成。月度 / 季度 / 年度统计 plan≠free 且 planExpireAt 未过期的真实用户。内部赠阅 = isInternal=true 的账号（通常是团队内部测试/免费赠送）。",
+    "当前时点有效订阅的套餐构成（快照）。月度 / 季度 / 年度只统计「真付费」——存在 status=paid 订单的未过期订阅用户。内部赠阅 = isInternal=true 账号 + admin 后台手动设置订阅（plan≠free 未过期但无 paid 订单）的用户之和。",
   targetLevel:
     "注册用户的目标考试级别分布（字段 targetLevel，1–8 级）。未填 = 用户注册时未选择目标级别。已剔除内部与管理员。",
 } as const;
@@ -148,6 +151,16 @@ function BasicTab({ data }: { data: BasicData }) {
           valueClass="text-violet-700"
         />
       </div>
+
+      <TripleCard
+        title="收入（元）"
+        hint={METRIC_HINTS.revenue}
+        triple={data.revenue}
+        formatter={(n) =>
+          n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        }
+        valueClass="text-amber-700"
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TripleCard
@@ -224,13 +237,6 @@ export default function DashboardPage() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">基础数据</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            已剔除内部账号与管理员。面板不缓存，刷新即时生效。指标字段旁的{" "}
-            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-600">
-              !
-            </span>{" "}
-            悬停可查看定义。
-          </p>
         </div>
 
         {loading && <p className="text-sm text-gray-500">加载中…</p>}
