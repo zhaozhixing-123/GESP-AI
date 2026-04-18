@@ -226,9 +226,9 @@ const CATEGORY_DEFS: CategoryDef[] = [
   },
   {
     value: "exam_review",
-    label: "模考诊断提示词",
+    label: "模拟考诊断提示词",
     group: "student",
-    defaultName: "模考诊断提示词",
+    defaultName: "模拟考诊断提示词",
     defaultContent: DEFAULT_EXAM_REVIEW_PROMPT,
     defaultVariables: [],
     description: "学生完成模拟考试后生成诊断报告使用",
@@ -381,7 +381,7 @@ export default function AdminPromptsPage() {
         <div className="mb-4 space-y-1 rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
           <div className="font-medium">支持的变量（按分类）：</div>
           <div>· AI 老师 / 错题分析：{`{{problem_title}}`}、{`{{problem_description}}`}、{`{{input_format}}`}、{`{{output_format}}`}、{`{{user_code_section}}`}、{`{{wrong_code_section}}`}、{`{{submission_status_label}}`}、{`{{status_specific_hint}}`}</div>
-          <div>· 模考诊断：无变量（题目/代码通过用户消息传入）</div>
+          <div>· 模拟考诊断：无变量（题目/代码通过用户消息传入）</div>
           <div>· 题目自动打标：{`{{gesp_tags}}`}</div>
           <div>· 测试数据生成：{`{{problem_context}}`}</div>
           <div>· 测试/变形题复核、变形题样例解法：{`{{title}}`}、{`{{description}}`}、{`{{input_format}}`}、{`{{output_format}}`}、{`{{sample_text}}`}</div>

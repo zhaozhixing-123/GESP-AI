@@ -126,7 +126,7 @@ export default function Navbar() {
             错题本
           </Link>
           <Link href="/exam" className="text-sm text-gray-600 hover:text-gray-900">
-            模考
+            模拟考
           </Link>
           {user?.role === "admin" && (
             <>
