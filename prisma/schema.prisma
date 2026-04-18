@@ -232,6 +232,28 @@ model Event {
   @@index([anonymousId, createdAt])
 }
 
+// ───── 大模型调用记录（用于成本看板） ─────
+
+model LlmCall {
+  id                     Int      @id @default(autoincrement())
+  purpose                String                  // chat | wrongbook_analysis | exam_review | testgen | testverify | variantgen | variantverify | problem_autotag
+  model                  String                  // claude-opus-4-7 | claude-sonnet-4-6 | ...
+  status                 String                  // success | error
+  inputTokens            Int      @default(0)
+  outputTokens           Int      @default(0)
+  cacheReadTokens        Int      @default(0)
+  cacheWrite5mTokens     Int      @default(0)
+  cacheWrite1hTokens     Int      @default(0)
+  costUsd                Float    @default(0)    // 按官方价格估算(USD)
+  latencyMs              Int?                    // 端到端耗时
+  errorMsg               String?
+  createdAt              DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([purpose, createdAt])
+  @@index([status, createdAt])
+}
+
 // ───── 邮箱验证码 ─────
 
 model VerificationCode {

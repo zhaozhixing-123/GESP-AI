@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { PURPOSE_LABEL, type LlmPurpose } from "@/lib/llmCost";
 import { prisma } from "@/lib/prisma";
 import { daysAgo } from "@/lib/weekRange";
+
+/** 人民币汇率（写死，定期手动维护） */
+const USD_TO_CNY = 7.2;
 
 /**
  * 基础数据面板接口。
@@ -236,14 +240,148 @@ async function computeBasic() {
   };
 }
 
+// ───── 大模型成本 ─────
+
+interface LlmSummary {
+  calls: number;
+  success: number;
+  tokens: number;
+  costCny: number;
+}
+
+interface LlmPurposeRow {
+  purpose: string;
+  label: string;
+  calls: number;
+  tokens: number;
+  costCny: number;
+}
+
+/** 汇总：调用次数 / 成功数 / token 总量 / 费用(¥) */
+async function llmSummaryInRange(start: Date | null, end: Date | null): Promise<LlmSummary> {
+  let rows: { calls: bigint; success: bigint; tokens: bigint | null; cost: number | null }[];
+  if (start && end) {
+    rows = await prisma.$queryRaw<typeof rows>`
+      SELECT
+        COUNT(*)::bigint AS calls,
+        COUNT(*) FILTER (WHERE status = 'success')::bigint AS success,
+        COALESCE(SUM(
+          "inputTokens" + "outputTokens"
+            + "cacheReadTokens" + "cacheWrite5mTokens" + "cacheWrite1hTokens"
+        ), 0)::bigint AS tokens,
+        COALESCE(SUM("costUsd"), 0) AS cost
+      FROM "LlmCall"
+      WHERE "createdAt" >= ${start} AND "createdAt" < ${end}`;
+  } else {
+    rows = await prisma.$queryRaw<typeof rows>`
+      SELECT
+        COUNT(*)::bigint AS calls,
+        COUNT(*) FILTER (WHERE status = 'success')::bigint AS success,
+        COALESCE(SUM(
+          "inputTokens" + "outputTokens"
+            + "cacheReadTokens" + "cacheWrite5mTokens" + "cacheWrite1hTokens"
+        ), 0)::bigint AS tokens,
+        COALESCE(SUM("costUsd"), 0) AS cost
+      FROM "LlmCall"`;
+  }
+  const r = rows[0];
+  return {
+    calls: Number(r?.calls ?? 0),
+    success: Number(r?.success ?? 0),
+    tokens: Number(r?.tokens ?? 0),
+    costCny: Number(r?.cost ?? 0) * USD_TO_CNY,
+  };
+}
+
+/** 按用途拆分：调用次数 / token 总量 / 费用(¥) */
+async function llmPurposeBreakdown(start: Date | null, end: Date | null): Promise<LlmPurposeRow[]> {
+  let rows: { purpose: string; calls: bigint; tokens: bigint | null; cost: number | null }[];
+  if (start && end) {
+    rows = await prisma.$queryRaw<typeof rows>`
+      SELECT
+        purpose,
+        COUNT(*)::bigint AS calls,
+        COALESCE(SUM(
+          "inputTokens" + "outputTokens"
+            + "cacheReadTokens" + "cacheWrite5mTokens" + "cacheWrite1hTokens"
+        ), 0)::bigint AS tokens,
+        COALESCE(SUM("costUsd"), 0) AS cost
+      FROM "LlmCall"
+      WHERE "createdAt" >= ${start} AND "createdAt" < ${end}
+      GROUP BY purpose
+      ORDER BY cost DESC`;
+  } else {
+    rows = await prisma.$queryRaw<typeof rows>`
+      SELECT
+        purpose,
+        COUNT(*)::bigint AS calls,
+        COALESCE(SUM(
+          "inputTokens" + "outputTokens"
+            + "cacheReadTokens" + "cacheWrite5mTokens" + "cacheWrite1hTokens"
+        ), 0)::bigint AS tokens,
+        COALESCE(SUM("costUsd"), 0) AS cost
+      FROM "LlmCall"
+      GROUP BY purpose
+      ORDER BY cost DESC`;
+  }
+  return rows.map((r) => ({
+    purpose: r.purpose,
+    label: PURPOSE_LABEL[r.purpose as LlmPurpose] ?? r.purpose,
+    calls: Number(r.calls),
+    tokens: Number(r.tokens ?? 0),
+    costCny: Number(r.cost ?? 0) * USD_TO_CNY,
+  }));
+}
+
+/** 埋点上线时间（最早一条 LlmCall.createdAt） */
+async function llmStatsStartDate(): Promise<string | null> {
+  const first = await prisma.llmCall.findFirst({
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+  return first ? first.createdAt.toISOString() : null;
+}
+
+async function computeLlmCost() {
+  const { start: yStart, end: yEnd } = yesterdayRange();
+  const now = new Date();
+  const sevenAgo = daysAgo(7, now);
+
+  const [
+    sumY, sum7, sumT,
+    brkY, brk7, brkT,
+    startDate,
+  ] = await Promise.all([
+    llmSummaryInRange(yStart, yEnd),
+    llmSummaryInRange(sevenAgo, now),
+    llmSummaryInRange(null, null),
+    llmPurposeBreakdown(yStart, yEnd),
+    llmPurposeBreakdown(sevenAgo, now),
+    llmPurposeBreakdown(null, null),
+    llmStatsStartDate(),
+  ]);
+
+  const rate = (s: LlmSummary) => (s.calls > 0 ? s.success / s.calls : 0);
+
+  return {
+    calls: { yesterday: sumY.calls, last7d: sum7.calls, total: sumT.calls },
+    successRate: { yesterday: rate(sumY), last7d: rate(sum7), total: rate(sumT) },
+    tokens: { yesterday: sumY.tokens, last7d: sum7.tokens, total: sumT.tokens },
+    costCny: { yesterday: sumY.costCny, last7d: sum7.costCny, total: sumT.costCny },
+    breakdown: { yesterday: brkY, last7d: brk7, total: brkT },
+    statsStartDate: startDate,
+    usdToCny: USD_TO_CNY,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin(request);
   if (auth instanceof Response) return auth;
 
   try {
-    const basic = await computeBasic();
+    const [basic, llm] = await Promise.all([computeBasic(), computeLlmCost()]);
     return Response.json(
-      { basic },
+      { basic, llm },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e: unknown) {

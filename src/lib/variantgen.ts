@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
+import { logLlmError, logLlmSuccess } from "./llmCost";
 import { normalizeOutput } from "./normalize";
 import { prisma } from "./prisma";
 import { promptCache } from "./prompt-cache";
@@ -105,34 +106,48 @@ async function callGenerateVariant(
     .replaceAll("{{level}}", String(source.level));
 
   console.log(`[VariantGen] 生成题面，模型: ${model}`);
-  const response = await client.messages.stream({
-    model,
-    max_tokens: 8000,
-    tools: [
-      {
-        name: "submit_variant",
-        description: "提交变形题题面",
-        input_schema: {
-          type: "object" as const,
-          properties: {
-            title:        { type: "string", description: "变形题标题" },
-            description:  { type: "string", description: "题目描述（Markdown）" },
-            inputFormat:  { type: "string", description: "输入格式说明" },
-            outputFormat: { type: "string", description: "输出格式说明" },
-            sampleInputs: {
-              type: "array",
-              description: "2~3 组样例输入字符串（不需要输出，程序会自动计算）",
-              items: { type: "string" },
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.stream({
+      model,
+      max_tokens: 8000,
+      tools: [
+        {
+          name: "submit_variant",
+          description: "提交变形题题面",
+          input_schema: {
+            type: "object" as const,
+            properties: {
+              title:        { type: "string", description: "变形题标题" },
+              description:  { type: "string", description: "题目描述（Markdown）" },
+              inputFormat:  { type: "string", description: "输入格式说明" },
+              outputFormat: { type: "string", description: "输出格式说明" },
+              sampleInputs: {
+                type: "array",
+                description: "2~3 组样例输入字符串（不需要输出，程序会自动计算）",
+                items: { type: "string" },
+              },
             },
+            required: ["title", "description", "inputFormat", "outputFormat", "sampleInputs"],
           },
-          required: ["title", "description", "inputFormat", "outputFormat", "sampleInputs"],
+          cache_control: { type: "ephemeral" as const },
         },
-        cache_control: { type: "ephemeral" as const },
-      },
-    ],
-    tool_choice: { type: "tool" as const, name: "submit_variant" },
-    messages: [{ role: "user", content: prompt }],
-  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+      ],
+      tool_choice: { type: "tool" as const, name: "submit_variant" },
+      messages: [{ role: "user", content: prompt }],
+    }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+  } catch (e) {
+    await logLlmError({ purpose: "variantgen", model, error: e, startedAt });
+    throw e;
+  }
+
+  await logLlmSuccess({
+    purpose: "variantgen",
+    model: response.model || model,
+    usage: response.usage,
+    startedAt,
+  });
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
@@ -186,26 +201,40 @@ async function computeSampleOutputs(draft: VariantDraft, model: string): Promise
     .replaceAll("{{input_format}}", draft.inputFormat)
     .replaceAll("{{output_format}}", draft.outputFormat);
 
-  const response = await client.messages.stream({
-    model,
-    max_tokens: 8000,
-    tools: [
-      {
-        name: "submit_solution",
-        description: "提交 C++ 解法",
-        input_schema: {
-          type: "object" as const,
-          properties: {
-            solution: { type: "string", description: "完整 C++ 代码" },
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.stream({
+      model,
+      max_tokens: 8000,
+      tools: [
+        {
+          name: "submit_solution",
+          description: "提交 C++ 解法",
+          input_schema: {
+            type: "object" as const,
+            properties: {
+              solution: { type: "string", description: "完整 C++ 代码" },
+            },
+            required: ["solution"],
           },
-          required: ["solution"],
+          cache_control: { type: "ephemeral" as const },
         },
-        cache_control: { type: "ephemeral" as const },
-      },
-    ],
-    tool_choice: { type: "tool" as const, name: "submit_solution" },
-    messages: [{ role: "user", content: prompt }],
-  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+      ],
+      tool_choice: { type: "tool" as const, name: "submit_solution" },
+      messages: [{ role: "user", content: prompt }],
+    }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+  } catch (e) {
+    await logLlmError({ purpose: "variantgen", model, error: e, startedAt });
+    throw e;
+  }
+
+  await logLlmSuccess({
+    purpose: "variantgen",
+    model: response.model || model,
+    usage: response.usage,
+    startedAt,
+  });
 
   const toolBlock = response.content.find((c) => c.type === "tool_use");
   if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("模型未返回解法");

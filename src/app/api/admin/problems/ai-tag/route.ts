@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
+import { logLlmError, logLlmSuccess } from "@/lib/llmCost";
 import { promptCache } from "@/lib/prompt-cache";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -94,15 +95,35 @@ export async function POST(request: NextRequest) {
 
       for (let i = 0; i < problems.length; i++) {
         const { id, luoguId, title, description } = problems[i];
+        const autotagModel = "claude-opus-4-7";
+        const autotagStartedAt = Date.now();
         try {
-          const msg = await client.messages.create({
-            model: "claude-opus-4-7",
-            max_tokens: 64,
-            system: systemBlocks,
-            messages: [{
-              role: "user",
-              content: `题目：${title}\n描述：${description.slice(0, 300)}`,
-            }],
+          let msg;
+          try {
+            msg = await client.messages.create({
+              model: autotagModel,
+              max_tokens: 64,
+              system: systemBlocks,
+              messages: [{
+                role: "user",
+                content: `题目：${title}\n描述：${description.slice(0, 300)}`,
+              }],
+            });
+          } catch (e) {
+            await logLlmError({
+              purpose: "problem_autotag",
+              model: autotagModel,
+              error: e,
+              startedAt: autotagStartedAt,
+            });
+            throw e;
+          }
+
+          await logLlmSuccess({
+            purpose: "problem_autotag",
+            model: msg.model || autotagModel,
+            usage: msg.usage,
+            startedAt: autotagStartedAt,
           });
 
           const raw = (msg.content[0] as any).text.trim();

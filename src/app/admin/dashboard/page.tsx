@@ -22,8 +22,31 @@ interface BasicData {
   targetLevels: { level: number | null; count: number }[];
 }
 
+interface LlmPurposeRow {
+  purpose: string;
+  label: string;
+  calls: number;
+  tokens: number;
+  costCny: number;
+}
+
+interface LlmData {
+  calls: BasicTriple;
+  successRate: BasicTriple;
+  tokens: BasicTriple;
+  costCny: BasicTriple;
+  breakdown: {
+    yesterday: LlmPurposeRow[];
+    last7d: LlmPurposeRow[];
+    total: LlmPurposeRow[];
+  };
+  statsStartDate: string | null;
+  usdToCny: number;
+}
+
 interface DashboardData {
   basic: BasicData;
+  llm: LlmData;
 }
 
 // ---- Basic Data ----
@@ -210,12 +233,194 @@ function BasicTab({ data }: { data: BasicData }) {
   );
 }
 
+// ---- LLM Cost ----
+
+const LLM_HINTS = {
+  calls:
+    "调用大模型的总次数（含成功与失败）。昨日 = 昨日自然日（Asia/Shanghai）落入的调用；过去 7 天 = 近 7×24h；历史累计 = 埋点上线至今全部调用。",
+  successRate:
+    "成功调用占比。失败原因通常是网络超时、模型报错或参数异常。",
+  tokens:
+    "input / output / cache_read / cache_write 所有类型 token 的加总，反映总消耗体量。",
+  costCny:
+    "按 Anthropic 官方定价（per MTok）对每次调用按实际模型分别估算，再以汇率 ¥/$ 折算为人民币。cache_read 按输入价 10% 计，5 分钟写缓存 1.25×、1 小时写缓存 2×。",
+  breakdown:
+    "按用途拆分：聊天、错题分析、模拟考试诊断、测试点生成 / 复核、变形题生成 / 复核、自动打标。",
+} as const;
+
+function fmtInt(n: number): string {
+  return n.toLocaleString("zh-CN");
+}
+
+function fmtPct(n: number): string {
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function fmtCny(n: number): string {
+  return `¥${n.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+type RangeKey = "yesterday" | "last7d" | "total";
+
+function LlmBreakdownTable({
+  rows,
+  rangeLabel,
+}: {
+  rows: LlmPurposeRow[];
+  rangeLabel: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <p className="mt-4 text-sm text-gray-500">{rangeLabel}暂无调用记录。</p>
+    );
+  }
+  const totalCalls = rows.reduce((s, r) => s + r.calls, 0);
+  const totalTokens = rows.reduce((s, r) => s + r.tokens, 0);
+  const totalCost = rows.reduce((s, r) => s + r.costCny, 0);
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <th className="px-3 py-2">用途分类</th>
+            <th className="px-3 py-2 text-right">调用次数</th>
+            <th className="px-3 py-2 text-right">TOKEN 消耗</th>
+            <th className="px-3 py-2 text-right">预估费用</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.purpose} className="border-b border-gray-100">
+              <td className="px-3 py-2 text-gray-900">{r.label}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                {fmtInt(r.calls)}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                {fmtInt(r.tokens)}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums font-medium text-amber-700">
+                {fmtCny(r.costCny)}
+              </td>
+            </tr>
+          ))}
+          <tr className="bg-gray-50 font-semibold">
+            <td className="px-3 py-2 text-gray-900">合计</td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-900">
+              {fmtInt(totalCalls)}
+            </td>
+            <td className="px-3 py-2 text-right tabular-nums text-gray-900">
+              {fmtInt(totalTokens)}
+            </td>
+            <td className="px-3 py-2 text-right tabular-nums text-amber-700">
+              {fmtCny(totalCost)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LlmTab({ data }: { data: LlmData }) {
+  const [range, setRange] = useState<RangeKey>("last7d");
+
+  const rangeLabels: Record<RangeKey, string> = {
+    yesterday: "昨日",
+    last7d: "过去 7 天",
+    total: "历史累计",
+  };
+
+  const rows = data.breakdown[range];
+  const startDateText = data.statsStartDate
+    ? new Date(data.statsStartDate).toLocaleString("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "暂无数据";
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <TripleCard
+          title="总调用次数"
+          hint={LLM_HINTS.calls}
+          triple={data.calls}
+          valueClass="text-blue-700"
+        />
+        <TripleCard
+          title="成功率"
+          hint={LLM_HINTS.successRate}
+          triple={data.successRate}
+          formatter={fmtPct}
+          valueClass="text-emerald-700"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <TripleCard
+          title="TOKEN 消耗"
+          hint={LLM_HINTS.tokens}
+          triple={data.tokens}
+          valueClass="text-violet-700"
+        />
+        <TripleCard
+          title="预估费用"
+          hint={LLM_HINTS.costCny}
+          triple={data.costCny}
+          formatter={fmtCny}
+          valueClass="text-amber-700"
+        />
+      </div>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-gray-900">
+            <InfoLabel text="按用途拆分" hint={LLM_HINTS.breakdown} />
+          </h3>
+          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 text-xs">
+            {(Object.keys(rangeLabels) as RangeKey[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setRange(k)}
+                className={`rounded-md px-3 py-1 font-medium transition ${
+                  range === k
+                    ? "bg-white text-gray-900 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {rangeLabels[k]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <LlmBreakdownTable rows={rows} rangeLabel={rangeLabels[range]} />
+      </section>
+
+      <p className="text-xs text-gray-500">
+        费用按 Anthropic 官方 per-MTok 价格估算（汇率 ¥{data.usdToCny} / $1，写死）。
+        历史累计仅涵盖埋点上线后的调用，统计起点：{startDateText}。
+      </p>
+    </div>
+  );
+}
+
 // ---- Page ----
+
+type TabKey = "basic" | "llm";
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState<TabKey>("basic");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -231,18 +436,37 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: "basic", label: "基础数据" },
+    { key: "llm", label: "大模型成本" },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="mx-auto max-w-6xl px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">基础数据</h1>
+        <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-gray-200">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition ${
+                tab === t.key
+                  ? "border-blue-600 text-blue-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
 
         {loading && <p className="text-sm text-gray-500">加载中…</p>}
         {error && <p className="text-sm text-red-600">加载失败：{error}</p>}
 
-        {data && <BasicTab data={data.basic} />}
+        {data && tab === "basic" && <BasicTab data={data.basic} />}
+        {data && tab === "llm" && <LlmTab data={data.llm} />}
       </main>
     </div>
   );

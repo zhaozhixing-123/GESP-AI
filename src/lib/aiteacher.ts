@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "./prisma";
 import { promptCache } from "./prompt-cache";
 import { AITier, getTierByLevel, tierCategory } from "./ai-tier";
+import { logLlmSuccess, logLlmError } from "./llmCost";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -378,6 +379,7 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
 
   // 调用 Claude API（流式），system 使用 TextBlockParam[] + cache_control
   console.log(`[AITeacher] 调用模型: ${AI_TEACHER_MODEL}`);
+  const startedAt = Date.now();
   const stream = await client.messages.stream({
     model: AI_TEACHER_MODEL,
     max_tokens: 2000,
@@ -417,10 +419,19 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
           },
         });
 
+        const finalMsg = await stream.finalMessage();
+        await logLlmSuccess({
+          purpose: "chat",
+          model: AI_TEACHER_MODEL,
+          usage: finalMsg.usage,
+          startedAt,
+        });
+
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
         controller.close();
       } catch (e: any) {
         console.error("[AITeacher] Stream error:", e);
+        await logLlmError({ purpose: "chat", model: AI_TEACHER_MODEL, error: e, startedAt });
         // 回滚刚才保存的 user 消息，避免孤立记录污染后续对话上下文
         try {
           await prisma.chatHistory.delete({ where: { id: userMsg.id } });
@@ -483,6 +494,7 @@ export async function streamWrongCodeAnalysis({
   );
 
   console.log(`[WrongbookAnalysis] 调用模型: ${AI_TEACHER_MODEL}`);
+  const wrongbookStartedAt = Date.now();
   const stream = await client.messages.stream({
     model: AI_TEACHER_MODEL,
     max_tokens: 3000,
@@ -534,10 +546,24 @@ export async function streamWrongCodeAnalysis({
           console.error("[WrongbookAnalysis] 保存分析失败:", dbErr);
         }
 
+        const finalMsg = await stream.finalMessage();
+        await logLlmSuccess({
+          purpose: "wrongbook_analysis",
+          model: AI_TEACHER_MODEL,
+          usage: finalMsg.usage,
+          startedAt: wrongbookStartedAt,
+        });
+
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
         controller.close();
       } catch (e: any) {
         console.error("[WrongbookAnalysis] Stream error:", e);
+        await logLlmError({
+          purpose: "wrongbook_analysis",
+          model: AI_TEACHER_MODEL,
+          error: e,
+          startedAt: wrongbookStartedAt,
+        });
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI 服务暂时不可用，请稍后再试" })}\n\n`));
         controller.close();
       }
@@ -602,6 +628,7 @@ export async function streamExamReview(
   const systemText = await getExamReviewPrompt();
 
   console.log(`[ExamReview] 调用模型: ${AI_TEACHER_MODEL}`);
+  const examStartedAt = Date.now();
   const stream = await client.messages.stream({
     model: AI_TEACHER_MODEL,
     max_tokens: 4000,
@@ -624,10 +651,23 @@ export async function streamExamReview(
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`));
           }
         }
+        const finalMsg = await stream.finalMessage();
+        await logLlmSuccess({
+          purpose: "exam_review",
+          model: AI_TEACHER_MODEL,
+          usage: finalMsg.usage,
+          startedAt: examStartedAt,
+        });
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, model: AI_TEACHER_MODEL_DISPLAY })}\n\n`));
         controller.close();
       } catch (e: any) {
         console.error("[ExamReview] Stream error:", e);
+        await logLlmError({
+          purpose: "exam_review",
+          model: AI_TEACHER_MODEL,
+          error: e,
+          startedAt: examStartedAt,
+        });
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "AI 服务暂时不可用，请稍后再试" })}\n\n`));
         controller.close();
       }

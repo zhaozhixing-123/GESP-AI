@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
+import { logLlmError, logLlmSuccess } from "./llmCost";
 import { normalizeOutput } from "./normalize";
 import { prisma } from "./prisma";
 import { promptCache } from "./prompt-cache";
@@ -82,24 +83,38 @@ async function getOpusSolution(problem: Problem): Promise<string> {
     .replaceAll("{{sample_text}}", sampleText ? `**样例**:\n${sampleText}` : "");
 
   console.log(`[Verify] 调用模型: ${VERIFY_MODEL}`);
-  const response = await client.messages.stream({
-    model: VERIFY_MODEL,
-    max_tokens: 16000,
-    tools: [{
-      name: "submit_solution",
-      description: "提交 C++ 解法",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          solution: { type: "string", description: "完整的 C++ 代码" },
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.stream({
+      model: VERIFY_MODEL,
+      max_tokens: 16000,
+      tools: [{
+        name: "submit_solution",
+        description: "提交 C++ 解法",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            solution: { type: "string", description: "完整的 C++ 代码" },
+          },
+          required: ["solution"],
         },
-        required: ["solution"],
-      },
-      cache_control: { type: "ephemeral" as const },
-    }],
-    tool_choice: { type: "tool" as const, name: "submit_solution" },
-    messages: [{ role: "user", content: prompt }],
-  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+        cache_control: { type: "ephemeral" as const },
+      }],
+      tool_choice: { type: "tool" as const, name: "submit_solution" },
+      messages: [{ role: "user", content: prompt }],
+    }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+  } catch (e) {
+    await logLlmError({ purpose: "testverify", model: VERIFY_MODEL, error: e, startedAt });
+    throw e;
+  }
+
+  await logLlmSuccess({
+    purpose: "testverify",
+    model: response.model || VERIFY_MODEL,
+    usage: response.usage,
+    startedAt,
+  });
 
   console.log(`[Verify] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 

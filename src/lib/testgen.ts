@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
+import { logLlmError, logLlmSuccess } from "./llmCost";
 import { normalizeOutput } from "./normalize";
 import { prisma } from "./prisma";
 import { promptCache } from "./prompt-cache";
@@ -104,13 +105,27 @@ async function callModelWithTool<T>(
   prompt: string,
   tool: { name: string; description: string; input_schema: { type: "object"; properties: Record<string, unknown>; required: string[] } }
 ): Promise<T> {
-  const response = await client.messages.stream({
-    model,
-    max_tokens: maxTokens,
-    tools: [{ ...tool, cache_control: { type: "ephemeral" as const } }],
-    tool_choice: { type: "tool" as const, name: tool.name },
-    messages: [{ role: "user", content: prompt }],
-  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      tools: [{ ...tool, cache_control: { type: "ephemeral" as const } }],
+      tool_choice: { type: "tool" as const, name: tool.name },
+      messages: [{ role: "user", content: prompt }],
+    }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+  } catch (e) {
+    await logLlmError({ purpose: "testgen", model, error: e, startedAt });
+    throw e;
+  }
+
+  await logLlmSuccess({
+    purpose: "testgen",
+    model: response.model || model,
+    usage: response.usage,
+    startedAt,
+  });
 
   console.log(`[TestGen] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 

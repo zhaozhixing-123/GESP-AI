@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { judgeCode } from "./judge0";
+import { logLlmError, logLlmSuccess } from "./llmCost";
 import { normalizeOutput } from "./normalize";
 import { prisma } from "./prisma";
 import { promptCache } from "./prompt-cache";
@@ -104,24 +105,38 @@ async function getOpusSolution(variant: VariantProblem): Promise<string> {
     .replaceAll("{{output_format}}", variant.outputFormat)
     .replaceAll("{{sample_text}}", sampleText ? `**样例**:\n${sampleText}` : "");
 
-  const response = await client.messages.stream({
-    model: VERIFY_MODEL,
-    max_tokens: 16000,
-    tools: [{
-      name: "submit_solution",
-      description: "提交 C++ 解法",
-      input_schema: {
-        type: "object" as const,
-        properties: {
-          solution: { type: "string", description: "完整的 C++ 代码" },
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await client.messages.stream({
+      model: VERIFY_MODEL,
+      max_tokens: 16000,
+      tools: [{
+        name: "submit_solution",
+        description: "提交 C++ 解法",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            solution: { type: "string", description: "完整的 C++ 代码" },
+          },
+          required: ["solution"],
         },
-        required: ["solution"],
-      },
-      cache_control: { type: "ephemeral" as const },
-    }],
-    tool_choice: { type: "tool" as const, name: "submit_solution" },
-    messages: [{ role: "user", content: prompt }],
-  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+        cache_control: { type: "ephemeral" as const },
+      }],
+      tool_choice: { type: "tool" as const, name: "submit_solution" },
+      messages: [{ role: "user", content: prompt }],
+    }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
+  } catch (e) {
+    await logLlmError({ purpose: "variantverify", model: VERIFY_MODEL, error: e, startedAt });
+    throw e;
+  }
+
+  await logLlmSuccess({
+    purpose: "variantverify",
+    model: response.model || VERIFY_MODEL,
+    usage: response.usage,
+    startedAt,
+  });
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断");
 
