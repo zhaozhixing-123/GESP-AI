@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ParticleBackground from "@/components/ParticleBackground";
+import { trackEvent } from "@/lib/analytics";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function LoginPage() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+      trackEvent("login_success");
       router.push("/problems");
     } catch {
       setError("网络错误，请重试");

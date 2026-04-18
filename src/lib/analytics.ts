@@ -13,6 +13,7 @@ export type EventType =
   | "page_view"
   | "problem_open"
   | "signup_submit"
+  | "login_success"
   | "pay_success_client";
 
 interface TrackPayload {

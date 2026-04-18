@@ -14,6 +14,7 @@ const ALLOWED_TYPES = new Set([
   "page_view",
   "problem_open",
   "signup_submit",
+  "login_success",
   "pay_success_client",
 ]);
 
