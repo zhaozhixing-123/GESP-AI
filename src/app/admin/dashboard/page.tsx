@@ -334,16 +334,6 @@ function LlmTab({ data }: { data: LlmData }) {
   };
 
   const rows = data.breakdown[range];
-  const startDateText = data.statsStartDate
-    ? new Date(data.statsStartDate).toLocaleString("zh-CN", {
-        timeZone: "Asia/Shanghai",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "暂无数据";
 
   return (
     <div className="space-y-4">
@@ -403,11 +393,6 @@ function LlmTab({ data }: { data: LlmData }) {
         </div>
         <LlmBreakdownTable rows={rows} rangeLabel={rangeLabels[range]} />
       </section>
-
-      <p className="text-xs text-gray-500">
-        费用按 Anthropic 官方 per-MTok 价格估算（汇率 ¥{data.usdToCny} / $1，写死）。
-        历史累计仅涵盖埋点上线后的调用，统计起点：{startDateText}。
-      </p>
     </div>
   );
 }

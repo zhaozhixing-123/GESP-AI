@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { daysAgo } from "@/lib/weekRange";
 
 /** 人民币汇率（写死，定期手动维护） */
-const USD_TO_CNY = 7.2;
+const USD_TO_CNY = 6.9;
 
 /**
  * 基础数据面板接口。
