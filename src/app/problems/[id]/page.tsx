@@ -360,6 +360,7 @@ export default function ProblemDetailPage() {
     setRunning(true);
     setRunResult(null);
     setRunError("");
+    setBottomTab("results");
     setActiveTab("run");
 
     try {
@@ -385,6 +386,7 @@ export default function ProblemDetailPage() {
     setRunning(true);
     setRunResult(null);
     setRunError("");
+    setBottomTab("results");
     setActiveTab("run");
 
     try {
@@ -414,6 +416,7 @@ export default function ProblemDetailPage() {
     setErrorAnalysis("");
     setAnalysisError("");
     setVariantInfo(null);
+    setBottomTab("results");
     setActiveTab("judge");
 
     try {
