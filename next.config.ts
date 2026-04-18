@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -21,7 +20,7 @@ const securityHeaders = [
       "img-src 'self' data: https:",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline'",
-      "connect-src 'self' https://api.anthropic.com https://*.sentry.io",
+      "connect-src 'self' https://api.anthropic.com",
       "frame-ancestors 'none'",
     ].join("; "),
   },
@@ -38,8 +37,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
-  silent: !process.env.CI,
-  sourcemaps: { disable: true },
-  telemetry: false,
-});
+export default nextConfig;
