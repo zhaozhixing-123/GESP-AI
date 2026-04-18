@@ -27,7 +27,7 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [includeCode, setIncludeCode] = useState(false);
+  const [includeCode, setIncludeCode] = useState(true);
   const [streaming, setStreaming] = useState("");
   const [model, setModel] = useState("");
   // "free_limit" | "chat_limit" | null
@@ -181,7 +181,7 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-900">{title ?? "AI 老师"}</span>
+          <span className="text-sm font-semibold text-gray-900">{title ?? "GESP AI 私教"}</span>
           {model && <span className="text-xs text-gray-400">({model})</span>}
         </div>
         <label className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -199,7 +199,7 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
       <div className="flex-1 overflow-auto p-4 space-y-3">
         {messages.length === 0 && !streaming && (
           <div className="py-8 text-center text-sm text-gray-400">
-            有问题就问 AI 老师吧！我会引导你思考，但不会直接给答案哦。
+            有问题就问 GESP AI 私教吧！我会引导你思考，但不会直接给答案哦。
           </div>
         )}
 
@@ -241,7 +241,7 @@ export default function ChatPanel({ problemId, variantId, code, initialMessage, 
         {sending && !streaming && (
           <div className="flex justify-start">
             <div className="rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-400">
-              AI 老师正在思考...
+              GESP AI 私教正在思考...
             </div>
           </div>
         )}

@@ -344,7 +344,7 @@ export default function ProblemDetailPage() {
   }
 
   // 右面板底部标签页
-  const [bottomTab, setBottomTab] = useState<"results" | "chat">("results");
+  const [bottomTab, setBottomTab] = useState<"results" | "chat">("chat");
 
   if (loading) {
     return (
@@ -566,6 +566,16 @@ export default function ProblemDetailPage() {
             {/* 标签页切换 */}
             <div className="flex border-b text-sm">
               <button
+                onClick={() => setBottomTab("chat")}
+                className={`px-4 py-2 font-medium ${
+                  bottomTab === "chat"
+                    ? "border-b-2 border-blue-600 text-blue-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                GESP AI 私教
+              </button>
+              <button
                 onClick={() => setBottomTab("results")}
                 className={`px-4 py-2 font-medium ${
                   bottomTab === "results"
@@ -574,16 +584,6 @@ export default function ProblemDetailPage() {
                 }`}
               >
                 运行 / 判题
-              </button>
-              <button
-                onClick={() => setBottomTab("chat")}
-                className={`px-4 py-2 font-medium ${
-                  bottomTab === "chat"
-                    ? "border-b-2 border-blue-600 text-blue-600"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                AI 老师
               </button>
             </div>
 
