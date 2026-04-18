@@ -128,12 +128,6 @@ export default function Navbar() {
           <Link href="/exam" className="text-sm text-gray-600 hover:text-gray-900">
             模考
           </Link>
-          <Link href="/settings/parent" className="text-sm text-gray-600 hover:text-gray-900">
-            家长设置
-          </Link>
-          <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
-            个人设置
-          </Link>
           {user?.role === "admin" && (
             <>
               <Link href="/admin/dashboard" className="text-sm text-gray-600 hover:text-gray-900">
@@ -163,6 +157,13 @@ export default function Navbar() {
               </div>
 
               {renderSubscriptionBadge()}
+
+              <Link href="/settings/parent" className="text-sm text-gray-600 hover:text-gray-900">
+                家长设置
+              </Link>
+              <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
+                学生设置
+              </Link>
 
               <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
                 {user.nickname}
