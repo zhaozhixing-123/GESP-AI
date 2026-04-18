@@ -55,13 +55,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!res.ok) {
-      console.error("[Focus] 飞书通知失败:", res.status, await res.text());
+      console.error(`[Focus] 飞书通知失败 status=${res.status}`);
       return Response.json({ sent: false, reason: "飞书接口返回错误" });
     }
 
     return Response.json({ sent: true });
   } catch (e: any) {
-    console.error("[Focus] 通知异常:", e);
+    console.error("[Focus] 通知异常:", e?.message ?? "unknown error");
     return Response.json({ error: "通知失败" }, { status: 500 });
   }
 }

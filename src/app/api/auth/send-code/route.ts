@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ message: "验证码已发送" });
   } catch (e: any) {
-    console.error("[SendCode]", e);
+    console.error("[SendCode]", e?.message ?? "unknown error");
     return Response.json({ error: "发送失败，请重试" }, { status: 500 });
   }
 }

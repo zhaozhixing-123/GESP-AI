@@ -34,6 +34,16 @@ export async function POST(request: NextRequest) {
     if (!problems?.length) {
       return Response.json({ error: "题目数据不能为空" }, { status: 400 });
     }
+    if (problems.length > 10) {
+      return Response.json({ error: "题目数量超限" }, { status: 400 });
+    }
+    for (const p of problems) {
+      if ((p.title?.length ?? 0) > 200 ||
+          (p.description?.length ?? 0) > 5000 ||
+          (p.code?.length ?? 0) > 20000) {
+        return Response.json({ error: "题目内容过长" }, { status: 400 });
+      }
+    }
 
     const stream = await streamExamReview(problems, timeUsedMinutes);
 
@@ -45,7 +55,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e: any) {
-    console.error("Exam review error:", e);
+    console.error("[ExamReview]", e?.message ?? "unknown error");
     return Response.json({ error: "生成报告失败，请重试" }, { status: 500 });
   }
 }

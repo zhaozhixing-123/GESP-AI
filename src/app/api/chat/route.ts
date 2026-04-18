@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e: any) {
-    console.error("Chat error:", e);
+    console.error("[Chat]", e?.message ?? "unknown error");
     activeUsers.delete(user.userId);
     return Response.json({ error: "对话失败，请重试" }, { status: 500 });
   }

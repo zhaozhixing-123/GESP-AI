@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e: any) {
-    console.error("[WrongbookAnalyze]", e);
+    console.error("[WrongbookAnalyze]", e?.message ?? "unknown error");
     return Response.json({ error: "分析失败，请重试" }, { status: 500 });
   }
 }

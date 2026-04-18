@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!verifyXunhuSign(params, appSecret)) {
-      console.warn("[Payment/Notify] 签名验证失败", params);
+      console.warn(`[Payment/Notify] 签名验证失败 orderNo=${params.trade_order_id ?? "unknown"}`);
       return new Response("sign error", { status: 400 });
     }
 
@@ -89,10 +89,10 @@ export async function POST(request: NextRequest) {
       return new Response("success");
     }
 
-    console.log(`[Payment/Notify] 支付成功 orderNo=${orderNo} userId=${order.userId} expireAt=${newExpireAt}`);
+    console.log(`[Payment/Notify] 支付成功 orderNo=${orderNo} expireAt=${newExpireAt.toISOString()}`);
     return new Response("success");
-  } catch (e) {
-    console.error("[Payment/Notify]", e);
+  } catch (e: any) {
+    console.error("[Payment/Notify]", e?.message ?? "unknown error");
     return new Response("error", { status: 500 });
   }
 }

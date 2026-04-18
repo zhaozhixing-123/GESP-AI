@@ -86,8 +86,8 @@ export async function POST(request: NextRequest) {
     });
 
     return Response.json({ message: "密码重置成功" });
-  } catch (e) {
-    console.error("[ResetPassword]", e);
+  } catch (e: any) {
+    console.error("[ResetPassword]", e?.message ?? "unknown error");
     return Response.json({ error: "重置失败，请重试" }, { status: 500 });
   }
 }

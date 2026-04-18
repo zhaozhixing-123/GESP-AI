@@ -73,7 +73,7 @@ export async function POST(
       remaining: result.total,
     });
   } catch (e: any) {
-    console.error("Verify error:", e);
-    return Response.json({ error: e.message || "复核失败" }, { status: 500 });
+    console.error("[Verify]", e?.message ?? "unknown error");
+    return Response.json({ error: e?.message || "复核失败" }, { status: 500 });
   }
 }

@@ -24,7 +24,7 @@ export async function DELETE(request: NextRequest) {
 
     return Response.json({ message: "已清空所有题目及相关数据" });
   } catch (e: any) {
-    console.error("Clear error:", e);
-    return Response.json({ error: "清空失败: " + e.message }, { status: 500 });
+    console.error("[Clear]", e?.message ?? "unknown error");
+    return Response.json({ error: "清空失败: " + (e?.message ?? "unknown error") }, { status: 500 });
   }
 }

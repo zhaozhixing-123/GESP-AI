@@ -44,9 +44,9 @@ export async function POST(
       model: TESTGEN_MODEL_DISPLAY,
     });
   } catch (e: any) {
-    console.error("Generate testcases error:", e);
+    console.error("[GenerateTestcases]", e?.message ?? "unknown error");
     return Response.json(
-      { error: e.message || "生成失败，请重试" },
+      { error: e?.message || "生成失败，请重试" },
       { status: 500 }
     );
   }

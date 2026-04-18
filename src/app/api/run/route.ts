@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       memory: result.memory,
     });
   } catch (e: any) {
-    console.error("Run error:", e);
+    console.error("[Run]", e?.message ?? "unknown error");
     return Response.json({ error: "运行失败，请重试" }, { status: 500 });
   }
 }

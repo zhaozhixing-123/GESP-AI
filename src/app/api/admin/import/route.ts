@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ error: "请提供 luoguId 或 luoguUrl" }, { status: 400 });
   } catch (e: any) {
-    console.error("Import error:", e);
-    return Response.json({ error: "导入失败: " + e.message }, { status: 500 });
+    console.error("[Import]", e?.message ?? "unknown error");
+    return Response.json({ error: "导入失败: " + (e?.message ?? "unknown error") }, { status: 500 });
   }
 }
 

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const total = await prisma.problem.count();
     return Response.json({ message: `导入完成，处理 ${count} 题，数据库共 ${total} 题` });
   } catch (e: any) {
-    console.error("Seed error:", e);
-    return Response.json({ error: "导入失败: " + e.message }, { status: 500 });
+    console.error("[Seed]", e?.message ?? "unknown error");
+    return Response.json({ error: "导入失败: " + (e?.message ?? "unknown error") }, { status: 500 });
   }
 }

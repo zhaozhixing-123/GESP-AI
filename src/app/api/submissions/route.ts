@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ submission, results });
   } catch (e: any) {
-    console.error("Submission error:", e);
+    console.error("[Submission]", e?.message ?? "unknown error");
     return Response.json(
       { error: "提交失败，请重试" },
       { status: 500 }

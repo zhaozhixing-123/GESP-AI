@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json({ orderNo, qrcodeUrl, amount });
   } catch (e: any) {
-    console.error("[Payment/Create]", e);
+    console.error("[Payment/Create]", e?.message ?? "unknown error");
     return Response.json({ error: "创建订单失败，请重试" }, { status: 500 });
   }
 }

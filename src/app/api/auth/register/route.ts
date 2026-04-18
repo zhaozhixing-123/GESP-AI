@@ -70,6 +70,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let normalizedPhone: string | null = null;
+    if (phone) {
+      const p = String(phone).trim();
+      if (!/^1\d{10}$/.test(p)) {
+        return Response.json({ error: "手机号格式不正确" }, { status: 400 });
+      }
+      normalizedPhone = p;
+    }
+
     // 校验邮箱验证码（原子操作：匹配+标记已使用一步完成）
     const upd = await prisma.verificationCode.updateMany({
       where: {
@@ -108,7 +117,7 @@ export async function POST(request: NextRequest) {
         role,
         targetLevel: hasTargetLevel ? parseInt(String(targetLevel)) : null,
         examDate: examDate ? new Date(examDate) : null,
-        phone: phone?.trim() || null,
+        phone: normalizedPhone,
         plan: isAdmin ? "yearly" : "free",
         planExpireAt: isAdmin ? new Date("2099-12-31") : null,
       },
@@ -131,8 +140,8 @@ export async function POST(request: NextRequest) {
         planExpireAt: user.planExpireAt,
       },
     });
-  } catch (e) {
-    console.error("Register error:", e);
+  } catch (e: any) {
+    console.error("[Register]", e?.message ?? "unknown error");
     return Response.json({ error: "注册失败，请重试" }, { status: 500 });
   }
 }

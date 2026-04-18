@@ -51,7 +51,17 @@ export async function PATCH(request: NextRequest) {
     const nick = String(body.nickname).trim();
     if (nick.length >= 2 && nick.length <= 20) data.nickname = nick;
   }
-  if (body.phone !== undefined) data.phone = body.phone || null;
+  if (body.phone !== undefined) {
+    if (body.phone) {
+      const phone = String(body.phone).trim();
+      if (!/^1\d{10}$/.test(phone)) {
+        return Response.json({ error: "手机号格式不正确" }, { status: 400 });
+      }
+      data.phone = phone;
+    } else {
+      data.phone = null;
+    }
+  }
   if (body.targetLevel !== undefined)
     data.targetLevel = body.targetLevel ? parseInt(body.targetLevel) : null;
   if (body.examDate !== undefined)

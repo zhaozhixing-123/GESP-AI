@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     return Response.json({ problems: selected });
   } catch (e: any) {
-    console.error("Exam problems error:", e);
+    console.error("[ExamProblems]", e?.message ?? "unknown error");
     return Response.json({ error: "获取题目失败，请重试" }, { status: 500 });
   }
 }

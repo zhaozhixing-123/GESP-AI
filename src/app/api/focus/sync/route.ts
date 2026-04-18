@@ -41,8 +41,8 @@ export async function POST(request: NextRequest) {
     });
 
     return Response.json({ ok: true });
-  } catch (e) {
-    console.error("[FocusSync]", e);
+  } catch (e: any) {
+    console.error("[FocusSync]", e?.message ?? "unknown error");
     return Response.json({ error: "同步失败" }, { status: 500 });
   }
 }

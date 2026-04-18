@@ -94,7 +94,7 @@ export async function POST(
 
     return Response.json({ submission, results });
   } catch (e: any) {
-    console.error("[VariantSubmit]", e);
+    console.error("[VariantSubmit]", e?.message ?? "unknown error");
     return Response.json({ error: "提交失败，请重试" }, { status: 500 });
   }
 }

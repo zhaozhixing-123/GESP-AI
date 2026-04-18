@@ -300,8 +300,8 @@ export async function GET(request: NextRequest) {
       { growth, learning, operations },
       { headers: { "Cache-Control": "private, max-age=300" } },
     );
-  } catch (e) {
-    console.error("[Dashboard API]", e);
+  } catch (e: any) {
+    console.error("[Dashboard API]", e?.message ?? "unknown error");
     return Response.json({ error: "数据加载失败" }, { status: 500 });
   }
 }
