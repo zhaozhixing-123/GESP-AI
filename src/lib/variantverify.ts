@@ -121,7 +121,7 @@ async function getOpusSolution(variant: VariantProblem): Promise<string> {
     }],
     tool_choice: { type: "tool" as const, name: "submit_solution" },
     messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
+  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断");
 

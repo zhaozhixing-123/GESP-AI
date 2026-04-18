@@ -5,7 +5,7 @@ import { isValidWebhookUrl, buildWebhookBody } from "@/lib/webhook";
 
 // POST: 测试飞书 Webhook
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   const { webhookUrl } = await request.json();

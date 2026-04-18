@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // 若已登录，附带该用户对当前页题目的做题状态
-    const user = getUserFromRequest(request);
+    const user = await getUserFromRequest(request);
     let statusMap: Record<number, "ac" | "attempted"> = {};
     if (user && problems.length > 0) {
       const problemIds = problems.map((p) => p.id);

@@ -11,7 +11,7 @@ type Plan = (typeof VALID_PLANS)[number];
 const CREATE_RATE_LIMIT = { name: "payment_create", windowMs: 600_000, maxRequests: 20 };
 
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }

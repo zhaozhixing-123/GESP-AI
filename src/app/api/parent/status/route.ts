@@ -4,7 +4,7 @@ import { getUserFromRequest } from "@/lib/auth";
 
 // GET: 检查是否已设置家长密码
 export async function GET(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   const dbUser = await prisma.user.findUnique({

@@ -6,7 +6,7 @@ import { judgeAll, mapStatus, getErrorMessage } from "@/lib/judge0";
 import { normalizeOutput } from "@/lib/normalize";
 
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "未登录" }, { status: 401 });
   }

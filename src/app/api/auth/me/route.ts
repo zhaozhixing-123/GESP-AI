@@ -4,7 +4,7 @@ import { getSubscriptionInfo } from "@/lib/subscription";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
-  const jwtUser = getUserFromRequest(request);
+  const jwtUser = await getUserFromRequest(request);
   if (!jwtUser) {
     return Response.json({ error: "未登录" }, { status: 401 });
   }

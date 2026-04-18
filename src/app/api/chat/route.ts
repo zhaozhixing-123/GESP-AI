@@ -12,7 +12,7 @@ const activeUsers = new Set<number>();
 
 /** POST /api/chat — 发送消息给 AI 老师（流式响应） */
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
 
 /** GET /api/chat?problemId=X 或 ?variantId=X — 获取聊天历史 */
 export async function GET(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "未登录" }, { status: 401 });
   }

@@ -1,13 +1,22 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getTokenFromRequest, verifyToken } from "@/lib/auth";
+import { getTokenFromRequest, decodeToken } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+// D3: 5 秒一次，防止脚本刷 DB
+const SYNC_RATE_LIMIT = { name: "focus_sync", windowMs: 5_000, maxRequests: 1 };
 
 /** POST /api/focus/sync — 同步每日专注数据到服务端 */
 export async function POST(request: NextRequest) {
   const token = getTokenFromRequest(request);
   if (!token) return Response.json({ error: "未登录" }, { status: 401 });
-  const payload = verifyToken(token);
+  const payload = decodeToken(token);
   if (!payload) return Response.json({ error: "登录已过期" }, { status: 401 });
+
+  const rl = checkRateLimit(SYNC_RATE_LIMIT, `user_${payload.userId}`);
+  if (!rl.allowed) {
+    return Response.json({ error: "同步过于频繁" }, { status: 429 });
+  }
 
   try {
     const { date, focusMs, distractMs } = await request.json();
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const token = getTokenFromRequest(request);
   if (!token) return Response.json({ error: "未登录" }, { status: 401 });
-  const payload = verifyToken(token);
+  const payload = decodeToken(token);
   if (!payload) return Response.json({ error: "登录已过期" }, { status: 401 });
 
   const date = request.nextUrl.searchParams.get("date");

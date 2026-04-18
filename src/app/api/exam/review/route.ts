@@ -7,7 +7,7 @@ import { checkRateLimit } from "@/lib/ratelimit";
 const REVIEW_RATE_LIMIT = { name: "ai_review", windowMs: 300_000, maxRequests: 3 };
 
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }

@@ -78,11 +78,14 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "新密码不能与旧密码相同" }, { status: 400 });
     }
 
-    // 更新密码
+    // 更新密码 + 递增 tokenVersion，使所有已签发 JWT 立即失效
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { email },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        tokenVersion: { increment: 1 },
+      },
     });
 
     return Response.json({ message: "密码重置成功" });

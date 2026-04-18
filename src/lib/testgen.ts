@@ -110,7 +110,7 @@ async function callModelWithTool<T>(
     tools: [{ ...tool, cache_control: { type: "ephemeral" as const } }],
     tool_choice: { type: "tool" as const, name: tool.name },
     messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
+  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
 
   console.log(`[TestGen] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 

@@ -4,7 +4,7 @@ import { getUserFromRequest } from "@/lib/auth";
 
 /** GET /api/user/profile — 获取当前用户的个人信息和订阅状态 */
 export async function GET(request: NextRequest) {
-  const auth = getUserFromRequest(request);
+  const auth = await getUserFromRequest(request);
   if (!auth) return Response.json({ error: "未登录" }, { status: 401 });
 
   const user = await prisma.user.findUnique({
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
 /** PATCH /api/user/profile — 更新可编辑字段 */
 export async function PATCH(request: NextRequest) {
-  const auth = getUserFromRequest(request);
+  const auth = await getUserFromRequest(request);
   if (!auth) return Response.json({ error: "未登录" }, { status: 401 });
 
   const body = await request.json();

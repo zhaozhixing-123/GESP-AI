@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 
 // POST: 首次设置家长密码
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   const { password } = await request.json();

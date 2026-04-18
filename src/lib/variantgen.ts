@@ -132,7 +132,7 @@ async function callGenerateVariant(
     ],
     tool_choice: { type: "tool" as const, name: "submit_variant" },
     messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
+  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
@@ -205,7 +205,7 @@ async function computeSampleOutputs(draft: VariantDraft, model: string): Promise
     ],
     tool_choice: { type: "tool" as const, name: "submit_solution" },
     messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
+  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
 
   const toolBlock = response.content.find((c) => c.type === "tool_use");
   if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("模型未返回解法");

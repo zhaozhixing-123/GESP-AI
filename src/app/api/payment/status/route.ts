@@ -7,7 +7,7 @@ import { getUserFromRequest } from "@/lib/auth";
  * 前端轮询此接口（每 2 秒），检查订单是否已支付
  */
 export async function GET(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }

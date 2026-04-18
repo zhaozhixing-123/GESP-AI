@@ -32,151 +32,34 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "缺少 problemId" }, { status: 400 });
   }
 
-  return handleSingle(problemId);
+  return makeStream((send) => runSingle(problemId, send));
 }
 
-// ─── 单题生成 ─────────────────────────────────────────────────────────────────
+// ─── SSE 流封装：所有 SSE 响应共用 ────────────────────────────────────────────
 
-async function handleSingle(problemId: number): Promise<Response> {
-  const problem = await prisma.problem.findUnique({
-    where: { id: problemId },
-    select: {
-      id: true, title: true, description: true,
-      inputFormat: true, outputFormat: true, samples: true,
-      tags: true, level: true,
-    },
-  });
+type Sender = (data: object) => void;
 
-  if (!problem) {
-    return Response.json({ error: "题目不存在" }, { status: 404 });
-  }
-
-  // 清理失败记录
-  await prisma.variantProblem.deleteMany({
-    where: { sourceId: problemId, genStatus: "failed" },
-  });
-
-  // 已有多少 ready/generating 变形题（同时获取标题，用于去重提示）
-  const existing = await prisma.variantProblem.findMany({
-    where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
-    select: { id: true, genStatus: true, title: true },
-  });
-
-  const readyCount      = existing.filter((v) => v.genStatus === "ready").length;
-  const generatingCount = existing.filter((v) => v.genStatus === "generating").length;
-  const needed = TARGET_VARIANTS_PER_PROBLEM - readyCount - generatingCount;
-
-  // 收集已有标题，生成新变形题时传入避免重复
-  const usedTitles: string[] = existing
-    .filter((v) => v.title && v.title !== "生成中...")
-    .map((v) => v.title);
-
+function makeStream(task: (send: Sender) => Promise<void>): Response {
   const encoder = new TextEncoder();
-  const stream  = new ReadableStream({
+  const stream = new ReadableStream({
     async start(controller) {
-      function send(data: object) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch { /* 客户端已断开，静默忽略，生成继续 */ }
-      }
-
-      // 每 20 秒发一条 SSE 注释，防止 Railway 代理因空闲超时断开连接
+      const send: Sender = (data) => {
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch { /* 客户端已断开 */ }
+      };
+      // keepalive：防止 Railway 代理因空闲超时断开
       const keepalive = setInterval(() => {
         try { controller.enqueue(encoder.encode(": keepalive\n\n")); } catch { /* ignore */ }
       }, 20_000);
 
-      if (needed <= 0) {
+      try {
+        await task(send);
+      } catch (e: any) {
+        console.error("[AdminVariants] 任务异常:", e?.message ?? e);
+        send({ done: true, error: e?.message ?? "任务异常" });
+      } finally {
         clearInterval(keepalive);
-        send({ done: true, message: `已有 ${readyCount} 道 ready 变形题，无需生成` });
         controller.close();
-        return;
       }
-
-      send({ step: "start", message: `开始为「${problem.title}」生成 ${needed} 道变形题` });
-
-      let successCount = 0;
-
-      for (let i = 1; i <= needed; i++) {
-        // 每次迭代前重新核查数量，防止并发请求超出上限
-        const currentCount = await prisma.variantProblem.count({
-          where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
-        });
-        if (currentCount >= TARGET_VARIANTS_PER_PROBLEM) {
-          send({ step: "skipped", current: i, total: needed, message: `已达到 ${TARGET_VARIANTS_PER_PROBLEM} 道上限，停止生成` });
-          break;
-        }
-
-        let variantId: number | null = null;
-        try {
-          const placeholder = await prisma.variantProblem.create({
-            data: {
-              sourceId: problemId, level: problem.level,
-              title: `生成中...`, description: "", inputFormat: "", outputFormat: "",
-              samples: "[]", genStatus: "generating",
-            },
-          });
-          variantId = placeholder.id;
-
-          send({ step: "variant_gen", current: i, total: needed, message: `第 ${i}/${needed} 道：生成题面...` });
-
-          const draft = await generateVariantProblem(problem, [...usedTitles]);
-
-          send({ step: "testgen", current: i, total: needed, message: `第 ${i}/${needed} 道：生成测试用例...` });
-
-          const testCases = await generateTestCases(draft);
-
-          send({ step: "testverify", current: i, total: needed, message: `第 ${i}/${needed} 道：Opus 复核 ${testCases.length} 个测试点...` });
-
-          const verifyResult = await verifyTestCases(
-            { ...draft, testCases: JSON.stringify(testCases) },
-            true
-          );
-
-          // 只保留通过复核的测试点
-          const cleanedTestCases = testCases.filter((_, idx) =>
-            verifyResult.details.find((d) => d.index === idx && d.status === "pass")
-          );
-
-          await prisma.variantProblem.update({
-            where: { id: variantId },
-            data: {
-              title:         draft.title,
-              description:   draft.description,
-              inputFormat:   draft.inputFormat,
-              outputFormat:  draft.outputFormat,
-              samples:       draft.samples,
-              tags:          draft.tags,
-              level:         draft.level,
-              testCases:     JSON.stringify(cleanedTestCases),
-              genStatus:     "ready",
-              genModel:      VARIANTGEN_MODEL,
-              verifiedAt:    new Date(),
-              verifiedCount: cleanedTestCases.length,
-            },
-          });
-
-          usedTitles.push(draft.title); // 本批次后续生成时回避该标题
-          successCount++;
-          send({
-            step: "done_one", current: i, total: needed,
-            variantId,
-            message: `第 ${i}/${needed} 道完成，${cleanedTestCases.length} 个测试点`,
-          });
-        } catch (e: any) {
-          console.error(`[AdminVariants] 第 ${i} 道失败:`, e.message);
-          if (variantId) {
-            await prisma.variantProblem.update({
-              where: { id: variantId },
-              data: { genStatus: "failed", genError: e.message },
-            }).catch(() => {});
-          }
-          send({ step: "error_one", current: i, total: needed, message: `第 ${i}/${needed} 道失败: ${e.message}` });
-        }
-      }
-
-      clearInterval(keepalive);
-      send({ done: true, message: `全部完成，成功生成 ${successCount}/${needed} 道变形题` });
-      controller.close();
     },
   });
 
@@ -189,14 +72,137 @@ async function handleSingle(problemId: number): Promise<Response> {
   });
 }
 
-// ─── 批量生成 ─────────────────────────────────────────────────────────────────
+// ─── 单题生成：纯函数，通过 send 上报进度 ─────────────────────────────────────
+
+async function runSingle(problemId: number, send: Sender): Promise<void> {
+  const problem = await prisma.problem.findUnique({
+    where: { id: problemId },
+    select: {
+      id: true, title: true, description: true,
+      inputFormat: true, outputFormat: true, samples: true,
+      tags: true, level: true,
+    },
+  });
+
+  if (!problem) {
+    send({ done: true, error: "题目不存在" });
+    return;
+  }
+
+  // 清理失败记录
+  await prisma.variantProblem.deleteMany({
+    where: { sourceId: problemId, genStatus: "failed" },
+  });
+
+  const existing = await prisma.variantProblem.findMany({
+    where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
+    select: { id: true, genStatus: true, title: true },
+  });
+
+  const readyCount      = existing.filter((v) => v.genStatus === "ready").length;
+  const generatingCount = existing.filter((v) => v.genStatus === "generating").length;
+  const needed = TARGET_VARIANTS_PER_PROBLEM - readyCount - generatingCount;
+
+  const usedTitles: string[] = existing
+    .filter((v) => v.title && v.title !== "生成中...")
+    .map((v) => v.title);
+
+  if (needed <= 0) {
+    send({ done: true, message: `已有 ${readyCount} 道 ready 变形题，无需生成` });
+    return;
+  }
+
+  send({ step: "start", message: `开始为「${problem.title}」生成 ${needed} 道变形题` });
+
+  let successCount = 0;
+
+  for (let i = 1; i <= needed; i++) {
+    // 每次迭代前重新核查数量，防止并发请求超出上限
+    const currentCount = await prisma.variantProblem.count({
+      where: { sourceId: problemId, genStatus: { in: ["ready", "generating"] } },
+    });
+    if (currentCount >= TARGET_VARIANTS_PER_PROBLEM) {
+      send({ step: "skipped", current: i, total: needed, message: `已达到 ${TARGET_VARIANTS_PER_PROBLEM} 道上限，停止生成` });
+      break;
+    }
+
+    let variantId: number | null = null;
+    try {
+      const placeholder = await prisma.variantProblem.create({
+        data: {
+          sourceId: problemId, level: problem.level,
+          title: `生成中...`, description: "", inputFormat: "", outputFormat: "",
+          samples: "[]", genStatus: "generating",
+        },
+      });
+      variantId = placeholder.id;
+
+      send({ step: "variant_gen", current: i, total: needed, message: `第 ${i}/${needed} 道：生成题面...` });
+
+      const draft = await generateVariantProblem(problem, [...usedTitles]);
+
+      send({ step: "testgen", current: i, total: needed, message: `第 ${i}/${needed} 道：生成测试用例...` });
+
+      const testCases = await generateTestCases(draft);
+
+      send({ step: "testverify", current: i, total: needed, message: `第 ${i}/${needed} 道：Opus 复核 ${testCases.length} 个测试点...` });
+
+      const verifyResult = await verifyTestCases(
+        { ...draft, testCases: JSON.stringify(testCases) },
+        true
+      );
+
+      const cleanedTestCases = testCases.filter((_, idx) =>
+        verifyResult.details.find((d) => d.index === idx && d.status === "pass")
+      );
+
+      await prisma.variantProblem.update({
+        where: { id: variantId },
+        data: {
+          title:         draft.title,
+          description:   draft.description,
+          inputFormat:   draft.inputFormat,
+          outputFormat:  draft.outputFormat,
+          samples:       draft.samples,
+          tags:          draft.tags,
+          level:         draft.level,
+          testCases:     JSON.stringify(cleanedTestCases),
+          genStatus:     "ready",
+          genModel:      VARIANTGEN_MODEL,
+          verifiedAt:    new Date(),
+          verifiedCount: cleanedTestCases.length,
+        },
+      });
+
+      usedTitles.push(draft.title);
+      successCount++;
+      send({
+        step: "done_one", current: i, total: needed,
+        variantId,
+        message: `第 ${i}/${needed} 道完成，${cleanedTestCases.length} 个测试点`,
+      });
+    } catch (e: any) {
+      console.error(`[AdminVariants] 第 ${i} 道失败:`, e.message);
+      if (variantId) {
+        await prisma.variantProblem.update({
+          where: { id: variantId },
+          data: { genStatus: "failed", genError: e.message },
+        }).catch(() => {});
+      }
+      send({ step: "error_one", current: i, total: needed, message: `第 ${i}/${needed} 道失败: ${e.message}` });
+    }
+  }
+
+  send({ done: true, message: `全部完成，成功生成 ${successCount}/${needed} 道变形题` });
+}
+
+// ─── 批量生成：复用 runSingle，不再嵌套 stream 透传 ────────────────────────────
 
 async function handleBatch(request: NextRequest): Promise<Response> {
   const url = new URL(request.url);
   const levelParam = url.searchParams.get("level");
   const levelFilter = levelParam ? parseInt(levelParam) : null;
 
-  // 找所有 ready 变形题不足 4 道的题目（可按级别筛选）
   const allProblems = await prisma.problem.findMany({
     where: levelFilter ? { level: levelFilter } : undefined,
     select: { id: true, title: true },
@@ -213,58 +219,21 @@ async function handleBatch(request: NextRequest): Promise<Response> {
     (p) => (countMap.get(p.id) ?? 0) < TARGET_VARIANTS_PER_PROBLEM
   );
 
-  const encoder = new TextEncoder();
-  const stream  = new ReadableStream({
-    async start(controller) {
-      function send(data: object) {
-        try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch { /* 客户端已断开，静默忽略，生成继续 */ }
-      }
+  return makeStream(async (send) => {
+    if (needProblems.length === 0) {
+      send({ done: true, message: "所有题目已有 4 道变形题，无需生成" });
+      return;
+    }
 
-      // keepalive：防止 Railway 代理因空闲超时断开连接
-      const keepalive = setInterval(() => {
-        try { controller.enqueue(encoder.encode(": keepalive\n\n")); } catch { /* ignore */ }
-      }, 20_000);
+    send({ step: "start", message: `共 ${needProblems.length} 道题需要补充变形题` });
 
-      if (needProblems.length === 0) {
-        clearInterval(keepalive);
-        send({ done: true, message: "所有题目已有 4 道变形题，无需生成" });
-        controller.close();
-        return;
-      }
+    for (let pi = 0; pi < needProblems.length; pi++) {
+      const p = needProblems[pi];
+      send({ step: "problem", current: pi + 1, total: needProblems.length, message: `处理题目 ${pi + 1}/${needProblems.length}：${p.title}` });
+      await runSingle(p.id, send);
+    }
 
-      send({ step: "start", message: `共 ${needProblems.length} 道题需要补充变形题` });
-
-      for (let pi = 0; pi < needProblems.length; pi++) {
-        const p = needProblems[pi];
-        send({ step: "problem", current: pi + 1, total: needProblems.length, message: `处理题目 ${pi + 1}/${needProblems.length}：${p.title}` });
-
-        // 复用单题逻辑：直接调用 handleSingle 并消费其 stream
-        const singleResponse = await handleSingle(p.id);
-        const reader = singleResponse.body?.getReader();
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            // 透传每道题的进度事件（已包含单题的 keepalive）
-            try { controller.enqueue(value); } catch { /* ignore */ }
-          }
-        }
-      }
-
-      clearInterval(keepalive);
-      send({ done: true, message: `批量生成完毕，处理了 ${needProblems.length} 道题` });
-      controller.close();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
+    send({ done: true, message: `批量生成完毕，处理了 ${needProblems.length} 道题` });
   });
 }
 
@@ -289,7 +258,6 @@ export async function GET(request: NextRequest) {
     return Response.json({ variants });
   }
 
-  // 汇总：每道题的 ready/generating/failed 数量
   const counts = await prisma.variantProblem.groupBy({
     by: ["sourceId", "genStatus"],
     _count: { id: true },
@@ -322,7 +290,6 @@ export async function DELETE(request: NextRequest) {
   });
   if (!variant) return Response.json({ error: "变形题不存在" }, { status: 404 });
 
-  // 级联清理关联数据
   await prisma.$transaction([
     prisma.wrongBookAnalysis.deleteMany({ where: { variantId } }),
     prisma.wrongBook.deleteMany({ where: { variantId } }),

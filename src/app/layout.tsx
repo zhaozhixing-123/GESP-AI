@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   },
 };
 
+// CSP nonce 需要逐请求注入到脚本标签，必须禁用静态/ISR/PPR 预渲染
+export const dynamic = "force-dynamic";
+
 /** 落地页使用的中文衬线/无衬线字体 */
 const notoFontsLink = `https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap`;
 

@@ -9,7 +9,7 @@ import { checkRateLimit } from "@/lib/ratelimit";
 const RUN_RATE_LIMIT = { name: "code_run", windowMs: 60_000, maxRequests: 10 };
 
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) {
     return Response.json({ error: "请先登录" }, { status: 401 });
   }

@@ -99,7 +99,7 @@ async function getOpusSolution(problem: Problem): Promise<string> {
     }],
     tool_choice: { type: "tool" as const, name: "submit_solution" },
     messages: [{ role: "user", content: prompt }],
-  }).finalMessage();
+  }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
 
   console.log(`[Verify] API 返回: model=${response.model}, stop=${response.stop_reason}, tokens=${response.usage?.output_tokens}`);
 

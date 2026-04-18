@@ -25,7 +25,7 @@ function verifyParentToken(token: string): { userId: number } | null {
 
 // POST: 验证家长密码，返回 parentToken
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   // 双维度限流：userId 和 IP 都要过，任一超限即拒绝

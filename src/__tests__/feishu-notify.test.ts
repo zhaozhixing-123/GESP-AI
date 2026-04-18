@@ -221,7 +221,7 @@ describe("POST /api/parent/test-webhook", () => {
 
   it("returns 401 when not logged in", async () => {
     const { getUserFromRequest } = await import("@/lib/auth");
-    vi.mocked(getUserFromRequest).mockReturnValue(null);
+    vi.mocked(getUserFromRequest).mockResolvedValue(null);
 
     const res = await handler(makeRequest({ webhookUrl: "https://open.feishu.cn/hook" }));
     expect(res.status).toBe(401);
@@ -229,7 +229,7 @@ describe("POST /api/parent/test-webhook", () => {
 
   it("returns 400 when webhookUrl is empty", async () => {
     const { getUserFromRequest } = await import("@/lib/auth");
-    vi.mocked(getUserFromRequest).mockReturnValue({ userId: 1, email: "test@test.com", role: "user" } as any);
+    vi.mocked(getUserFromRequest).mockResolvedValue({ userId: 1, email: "test@test.com", role: "user" } as any);
 
     const res = await handler(makeRequest({ webhookUrl: "" }));
     expect(res.status).toBe(400);
@@ -237,7 +237,7 @@ describe("POST /api/parent/test-webhook", () => {
 
   it("returns 400 for non-feishu webhook URL", async () => {
     const { getUserFromRequest } = await import("@/lib/auth");
-    vi.mocked(getUserFromRequest).mockReturnValue({ userId: 1, email: "test@test.com", role: "user" } as any);
+    vi.mocked(getUserFromRequest).mockResolvedValue({ userId: 1, email: "test@test.com", role: "user" } as any);
 
     const res = await handler(makeRequest({ webhookUrl: "https://hooks.slack.com/xxx" }));
     expect(res.status).toBe(400);
@@ -247,7 +247,7 @@ describe("POST /api/parent/test-webhook", () => {
 
   it("sends test message and returns success", async () => {
     const { getUserFromRequest } = await import("@/lib/auth");
-    vi.mocked(getUserFromRequest).mockReturnValue({ userId: 1, email: "test@test.com", role: "user" } as any);
+    vi.mocked(getUserFromRequest).mockResolvedValue({ userId: 1, email: "test@test.com", role: "user" } as any);
 
     const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.user.findUnique).mockResolvedValue({ nickname: "TestKid" } as any);
@@ -272,7 +272,7 @@ describe("POST /api/parent/test-webhook", () => {
 
   it("returns 400 when feishu rejects the message", async () => {
     const { getUserFromRequest } = await import("@/lib/auth");
-    vi.mocked(getUserFromRequest).mockReturnValue({ userId: 1, email: "test@test.com", role: "user" } as any);
+    vi.mocked(getUserFromRequest).mockResolvedValue({ userId: 1, email: "test@test.com", role: "user" } as any);
 
     const { prisma } = await import("@/lib/prisma");
     vi.mocked(prisma.user.findUnique).mockResolvedValue({ nickname: "Kid" } as any);

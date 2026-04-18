@@ -4,7 +4,7 @@ import { getUserFromRequest } from "@/lib/auth";
 
 /** GET /api/wrongbook — 获取当前用户的错题本列表（含掌握状态和 AI 分析） */
 export async function GET(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   try {
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
 /** POST /api/wrongbook — 手动将题目加入错题本 */
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   try {

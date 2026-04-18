@@ -389,7 +389,7 @@ export async function chat(ctx: ChatContext): Promise<ReadableStream<Uint8Array>
       },
     ],
     messages,
-  });
+  }, { timeout: 120_000, maxRetries: 1 });
 
   // 创建 ReadableStream 返回给客户端
   let fullResponse = "";
@@ -498,7 +498,7 @@ export async function streamWrongCodeAnalysis({
       },
     ],
     messages: [{ role: "user", content: "请分析我的代码哪里出错了。" }],
-  });
+  }, { timeout: 120_000, maxRetries: 1 });
 
   const encoder = new TextEncoder();
 
@@ -613,7 +613,7 @@ export async function streamExamReview(
       },
     ],
     messages: [{ role: "user", content: userMessage }],
-  });
+  }, { timeout: 180_000, maxRetries: 1 });
 
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({

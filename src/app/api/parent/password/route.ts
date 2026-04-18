@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 
 // PUT: 修改家长密码（需要旧密码）
 export async function PUT(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   const { oldPassword, newPassword } = await request.json();

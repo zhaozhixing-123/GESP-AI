@@ -9,7 +9,7 @@ const ANALYZE_RATE_LIMIT = { name: "ai_analyze", windowMs: 60_000, maxRequests: 
 
 /** POST /api/wrongbook/analyze — 错题一次性分析，不读写 ChatHistory */
 export async function POST(request: NextRequest) {
-  const user = getUserFromRequest(request);
+  const user = await getUserFromRequest(request);
   if (!user) return Response.json({ error: "未登录" }, { status: 401 });
 
   const rl = checkRateLimit(ANALYZE_RATE_LIMIT, `user_${user.userId}`);

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+// CSP 由 proxy.ts 基于每请求 nonce 下发；这里只保留与 CSP 无关的通用安全头
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -12,17 +13,6 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
-  },
-  {
-    key: "Content-Security-Policy",
-    value: [
-      "default-src 'self'",
-      "img-src 'self' data: https:",
-      "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline'",
-      "connect-src 'self' https://api.anthropic.com",
-      "frame-ancestors 'none'",
-    ].join("; "),
   },
 ];
 
