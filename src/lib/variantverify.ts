@@ -123,7 +123,6 @@ async function getOpusSolution(variant: VariantProblem): Promise<string> {
         },
         cache_control: { type: "ephemeral" as const },
       }],
-      tool_choice: { type: "tool" as const, name: "submit_solution" },
       messages: [{ role: "user", content: prompt }],
     }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
   } catch (e) {
@@ -141,12 +140,18 @@ async function getOpusSolution(variant: VariantProblem): Promise<string> {
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断");
 
   const toolBlock = response.content.find((c) => c.type === "tool_use");
-  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Opus 未返回工具调用");
+  if (toolBlock && toolBlock.type === "tool_use") {
+    const { solution } = toolBlock.input as { solution?: string };
+    if (solution && solution.length >= 20) return solution;
+  }
 
-  const { solution } = toolBlock.input as { solution: string };
-  if (!solution || solution.length < 20) throw new Error("Opus 返回的代码太短");
+  const textBlock = response.content.find((c) => c.type === "text");
+  if (textBlock && textBlock.type === "text") {
+    const match = textBlock.text.match(/```(?:cpp|c\+\+)?\s*\n([\s\S]+?)\n```/i);
+    if (match && match[1].trim().length >= 20) return match[1];
+  }
 
-  return solution;
+  throw new Error("Opus 未返回可用解法");
 }
 
 /** 用解法跑一组输入，返回 normalizedOutput */

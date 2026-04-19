@@ -65,9 +65,13 @@ interface VerifyResult {
     opusOutput: string;
     status: "pass" | "mismatch" | "error";
   }>;
+  /** 顶层状态：当 Opus 无法生成可信解法时填 "oracle_failed"，否则留空 */
+  status?: "oracle_failed";
+  /** oracle_failed 时的简短原因，用于 UI 展示 */
+  reason?: string;
 }
 
-/** 调 Opus 生成一个正确的 C++ 解法（使用 tool_use 强制结构化输出） */
+/** 调 Opus 生成 C++ 解法。不强制 tool_choice：优先读 tool_use，兜底从 text 围栏提取。 */
 async function getOpusSolution(problem: Problem): Promise<string> {
   const samples = JSON.parse(problem.samples || "[]");
   const sampleText = samples
@@ -101,7 +105,6 @@ async function getOpusSolution(problem: Problem): Promise<string> {
         },
         cache_control: { type: "ephemeral" as const },
       }],
-      tool_choice: { type: "tool" as const, name: "submit_solution" },
       messages: [{ role: "user", content: prompt }],
     }, { timeout: 180_000, maxRetries: 1 }).finalMessage();
   } catch (e) {
@@ -120,13 +123,21 @@ async function getOpusSolution(problem: Problem): Promise<string> {
 
   if (response.stop_reason === "max_tokens") throw new Error("生成被截断(max_tokens)");
 
+  // 优先从 tool_use 里取代码
   const toolBlock = response.content.find((c) => c.type === "tool_use");
-  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("Opus 未返回工具调用");
+  if (toolBlock && toolBlock.type === "tool_use") {
+    const input = toolBlock.input as { solution?: string };
+    if (input.solution && input.solution.length >= 20) return input.solution;
+  }
 
-  const input = toolBlock.input as { solution: string };
-  if (!input.solution || input.solution.length < 20) throw new Error("Opus 返回的代码太短");
+  // 兜底：从 text 里的 ```cpp ... ``` 围栏提取
+  const textBlock = response.content.find((c) => c.type === "text");
+  if (textBlock && textBlock.type === "text") {
+    const match = textBlock.text.match(/```(?:cpp|c\+\+)?\s*\n([\s\S]+?)\n```/i);
+    if (match && match[1].trim().length >= 20) return match[1];
+  }
 
-  return input.solution;
+  throw new Error("Opus 未返回可用解法");
 }
 
 /** 用 Opus 解法验证所有测试用例 */
@@ -144,6 +155,8 @@ export async function verifyTestCases(
   // 1. 调 Opus 生成解法（带重试）
   const MAX_SOLUTION_RETRIES = 3;
   let solution = "";
+  let solutionReady = false;
+  let lastFailureReason = "";
 
   for (let attempt = 1; attempt <= MAX_SOLUTION_RETRIES; attempt++) {
     try {
@@ -163,6 +176,7 @@ export async function verifyTestCases(
           if (actual !== expected) {
             console.error(`[Verify] 样例 ${i + 1} 验证失败（期望 "${expected.slice(0, 80)}"，实际 "${actual.slice(0, 80)}"）`);
             samplePassed = false;
+            lastFailureReason = `样例 ${i + 1} 不一致（期望 "${expected.slice(0, 60)}"，Opus 输出 "${actual.slice(0, 60)}"）`;
             break;
           }
 
@@ -175,21 +189,37 @@ export async function verifyTestCases(
             await new Promise((r) => setTimeout(r, 3000));
             continue;
           }
-          throw new Error(`Opus 解法 ${MAX_SOLUTION_RETRIES} 次尝试均未通过样例验证，无法进行复核`);
+          // 3 次均未通过样例 → 标记 oracle_failed，不阻塞上游流程
+          break;
         }
 
         console.log("[Verify] Opus 解法通过全部样例验证");
       }
 
+      solutionReady = true;
       break; // 成功，跳出重试循环
     } catch (e: any) {
-      if (attempt < MAX_SOLUTION_RETRIES && !e.message.includes("次尝试均未通过")) {
-        console.warn(`[Verify] 第 ${attempt} 次失败: ${e.message}，重试...`);
+      lastFailureReason = e?.message ?? "生成解法失败";
+      if (attempt < MAX_SOLUTION_RETRIES) {
+        console.warn(`[Verify] 第 ${attempt} 次失败: ${lastFailureReason}，重试...`);
         await new Promise((r) => setTimeout(r, 3000));
         continue;
       }
-      throw e;
+      // 3 次都失败 → 标记 oracle_failed
+      console.warn(`[Verify] ${MAX_SOLUTION_RETRIES} 次均失败: ${lastFailureReason}`);
     }
+  }
+
+  if (!solutionReady) {
+    return {
+      total: testCases.length,
+      passed: 0,
+      failed: 0,
+      removed: 0,
+      details: [],
+      status: "oracle_failed",
+      reason: lastFailureReason || "Opus 无法生成可信解法",
+    };
   }
 
   // 3. 用 Opus 解法跑所有测试点

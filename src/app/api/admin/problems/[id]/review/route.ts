@@ -50,6 +50,9 @@ export async function POST(
       passed: result.passed,
       failed: result.failed,
       issues,
+      ...(result.status === "oracle_failed"
+        ? { status: "oracle_failed" as const, reason: result.reason ?? "Opus 无法生成可信解法" }
+        : {}),
     };
 
     await prisma.problem.update({
@@ -60,13 +63,14 @@ export async function POST(
       },
     });
 
-    return Response.json({
-      message:
-        result.failed === 0
+    const message =
+      result.status === "oracle_failed"
+        ? `Opus 无法验证该题：${report.reason}`
+        : result.failed === 0
           ? `再复核完成：全部 ${result.total} 个测试点均通过`
-          : `再复核完成：${result.passed} 通过，${result.failed} 不一致（未删除，请人工审阅）`,
-      ...report,
-    });
+          : `再复核完成：${result.passed} 通过，${result.failed} 不一致（未删除，请人工审阅）`;
+
+    return Response.json({ message, ...report });
   } catch (e: any) {
     console.error("[Review]", e?.message ?? "unknown error");
     return Response.json({ error: e?.message || "再复核失败" }, { status: 500 });

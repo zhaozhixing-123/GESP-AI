@@ -31,6 +31,8 @@ interface ReviewReport {
   passed: number;
   failed: number;
   issues: ReviewIssue[];
+  status?: "oracle_failed";
+  reason?: string;
 }
 
 function parseReviewReport(raw?: string | null): ReviewReport | null {
@@ -541,7 +543,7 @@ export default function AdminProblemsPage() {
   const [batchReviewLevel, setBatchReviewLevel] = useState("0");
   const [batchReviewRunning, setBatchReviewRunning] = useState(false);
   const [batchReviewProgress, setBatchReviewProgress] = useState("");
-  const [batchReviewResults, setBatchReviewResults] = useState<Array<{ title: string; failed: number; total: number; error?: string }>>([]);
+  const [batchReviewResults, setBatchReviewResults] = useState<Array<{ title: string; failed: number; total: number; error?: string; oracleFailed?: boolean; reason?: string }>>([]);
 
   // --- 变形题再复核 ---
   const [variantReviewing, setVariantReviewing] = useState<number | null>(null);
@@ -702,6 +704,7 @@ export default function AdminProblemsPage() {
     setBatchReviewResults([]);
     let okCount = 0;
     let badCount = 0;
+    let skippedCount = 0;
 
     for (let i = 0; i < targets.length; i++) {
       const p = targets[i];
@@ -711,9 +714,14 @@ export default function AdminProblemsPage() {
         const res = await fetchWithRetry(`/api/admin/problems/${p.id}/review`, { method: "POST", headers });
         const data = await res.json();
         if (res.ok) {
-          const failed = data.failed ?? 0;
-          if (failed > 0) badCount++; else okCount++;
-          setBatchReviewResults((prev) => [...prev, { title: p.title, failed, total: data.total ?? 0 }]);
+          if (data.status === "oracle_failed") {
+            skippedCount++;
+            setBatchReviewResults((prev) => [...prev, { title: p.title, failed: 0, total: 0, oracleFailed: true, reason: data.reason }]);
+          } else {
+            const failed = data.failed ?? 0;
+            if (failed > 0) badCount++; else okCount++;
+            setBatchReviewResults((prev) => [...prev, { title: p.title, failed, total: data.total ?? 0 }]);
+          }
         } else {
           badCount++;
           setBatchReviewResults((prev) => [...prev, { title: p.title, failed: 0, total: 0, error: data.error }]);
@@ -725,7 +733,7 @@ export default function AdminProblemsPage() {
       setReviewing(null);
     }
 
-    setBatchReviewProgress(`再复核完成：${okCount} 题全通过，${badCount} 题有差异待人工审阅`);
+    setBatchReviewProgress(`再复核完成：${okCount} 题全通过，${badCount} 题有差异待人工审阅${skippedCount > 0 ? `，${skippedCount} 题 Opus 无法验证` : ""}`);
     setBatchReviewRunning(false);
     fetchProblems();
   }
@@ -1050,8 +1058,14 @@ export default function AdminProblemsPage() {
                   {batchReviewResults.map((r, i) => (
                     <div key={i} className="flex items-center justify-between text-xs">
                       <span className="truncate text-gray-700">{r.title}</span>
-                      <span className={r.error ? "text-red-600" : r.failed > 0 ? "text-orange-600" : "text-rose-600"}>
-                        {r.error ? `失败: ${r.error}` : r.failed > 0 ? `${r.failed}/${r.total} 待审` : `全部 ${r.total} 通过`}
+                      <span className={r.error ? "text-red-600" : r.oracleFailed ? "text-gray-500" : r.failed > 0 ? "text-orange-600" : "text-rose-600"}>
+                        {r.error
+                          ? `失败: ${r.error}`
+                          : r.oracleFailed
+                            ? `⊘ Opus 无法验证${r.reason ? ` (${r.reason.slice(0, 40)})` : ""}`
+                            : r.failed > 0
+                              ? `${r.failed}/${r.total} 待审`
+                              : `全部 ${r.total} 通过`}
                       </span>
                     </div>
                   ))}
@@ -1295,9 +1309,19 @@ export default function AdminProblemsPage() {
                                 <button
                                   onClick={() => setExpandedReviewId(expandedReviewId === p.id ? null : p.id)}
                                   title={`再复核 ${getTimeAgo(p.lastReviewedAt)}`}
-                                  className={`ml-1 rounded px-1 text-xs ${report.failed > 0 ? "bg-rose-100 text-rose-700" : "bg-green-100 text-green-700"} hover:opacity-80`}
+                                  className={`ml-1 rounded px-1 text-xs hover:opacity-80 ${
+                                    report.status === "oracle_failed"
+                                      ? "bg-gray-200 text-gray-600"
+                                      : report.failed > 0
+                                        ? "bg-rose-100 text-rose-700"
+                                        : "bg-green-100 text-green-700"
+                                  }`}
                                 >
-                                  {report.failed > 0 ? `⚠ ${report.failed}待审` : `✓ 再复核`}
+                                  {report.status === "oracle_failed"
+                                    ? "⊘ 无法验证"
+                                    : report.failed > 0
+                                      ? `⚠ ${report.failed}待审`
+                                      : `✓ 再复核`}
                                 </button>
                               )
                               : null;
@@ -1388,17 +1412,29 @@ export default function AdminProblemsPage() {
                       {expandedReviewId === p.id && (() => {
                         const report = parseReviewReport(p.reviewReport);
                         if (!report) return null;
+                        const isOracleFailed = report.status === "oracle_failed";
                         return (
-                          <tr className="border-b bg-rose-50">
+                          <tr className={`border-b ${isOracleFailed ? "bg-gray-50" : "bg-rose-50"}`}>
                             <td colSpan={7} className="px-6 py-3">
-                              <div className="mb-2 flex items-center justify-between text-xs text-rose-700">
+                              <div className={`mb-2 flex items-center justify-between text-xs ${isOracleFailed ? "text-gray-600" : "text-rose-700"}`}>
                                 <span>
-                                  再复核报告 · {report.modelDisplay || report.model} · {new Date(report.reviewedAt).toLocaleString()} · {report.passed}/{report.total} 通过
-                                  {report.failed > 0 && <span className="ml-2 font-semibold">⚠ {report.failed} 个差异待人工审阅</span>}
+                                  再复核报告 · {report.modelDisplay || report.model} · {new Date(report.reviewedAt).toLocaleString()}
+                                  {isOracleFailed
+                                    ? <span className="ml-2 font-semibold">⊘ Opus 无法验证</span>
+                                    : <>
+                                        <span className="mx-1">·</span>{report.passed}/{report.total} 通过
+                                        {report.failed > 0 && <span className="ml-2 font-semibold">⚠ {report.failed} 个差异待人工审阅</span>}
+                                      </>}
                                 </span>
                                 <button onClick={() => setExpandedReviewId(null)} className="text-gray-500 hover:underline">收起</button>
                               </div>
-                              {report.issues.length === 0 ? (
+                              {isOracleFailed ? (
+                                <div className="rounded border border-gray-200 bg-white p-2 text-xs text-gray-700">
+                                  <div className="mb-1 font-semibold">原因</div>
+                                  <div className="whitespace-pre-wrap break-words">{report.reason || "未知"}</div>
+                                  <p className="mt-2 text-gray-500">该题 Opus 多次无法给出通过样例的解法，未对测试点做任何判定，也未改动数据。可稍后重试再复核，或改用其他方式人工审阅。</p>
+                                </div>
+                              ) : report.issues.length === 0 ? (
                                 <div className="text-sm text-green-700">✓ 全部测试点通过再复核</div>
                               ) : (
                                 <div className="space-y-2">
@@ -1471,9 +1507,19 @@ export default function AdminProblemsPage() {
                                           <button
                                             onClick={() => setExpandedVariantReviewId(expandedVariantReviewId === v.id ? null : v.id)}
                                             title={v.lastReviewedAt ? getTimeAgo(v.lastReviewedAt) : ""}
-                                            className={`rounded px-1 text-xs ${vReport.failed > 0 ? "bg-rose-100 text-rose-700" : "bg-green-100 text-green-700"}`}
+                                            className={`rounded px-1 text-xs ${
+                                              vReport.status === "oracle_failed"
+                                                ? "bg-gray-200 text-gray-600"
+                                                : vReport.failed > 0
+                                                  ? "bg-rose-100 text-rose-700"
+                                                  : "bg-green-100 text-green-700"
+                                            }`}
                                           >
-                                            {vReport.failed > 0 ? `⚠ ${vReport.failed}/${vReport.total}` : `✓ ${vReport.total}`}
+                                            {vReport.status === "oracle_failed"
+                                              ? "⊘ 无法验证"
+                                              : vReport.failed > 0
+                                                ? `⚠ ${vReport.failed}/${vReport.total}`
+                                                : `✓ ${vReport.total}`}
                                           </button>
                                         ) : (
                                           <span className="text-gray-300 text-xs">-</span>
@@ -1508,16 +1554,26 @@ export default function AdminProblemsPage() {
                                         </button>
                                       </td>
                                     </tr>
-                                    {expandedVariantReviewId === v.id && vReport && (
-                                      <tr className="border-t border-rose-200 bg-rose-50">
+                                    {expandedVariantReviewId === v.id && vReport && (() => {
+                                      const isOracleFailed = vReport.status === "oracle_failed";
+                                      return (
+                                      <tr className={`border-t ${isOracleFailed ? "border-gray-200 bg-gray-50" : "border-rose-200 bg-rose-50"}`}>
                                         <td colSpan={6} className="px-3 py-2">
-                                          <div className="mb-2 flex items-center justify-between text-xs text-rose-700">
+                                          <div className={`mb-2 flex items-center justify-between text-xs ${isOracleFailed ? "text-gray-600" : "text-rose-700"}`}>
                                             <span>
-                                              v{v.id} 再复核 · {vReport.modelDisplay || vReport.model} · {new Date(vReport.reviewedAt).toLocaleString()} · {vReport.passed}/{vReport.total} 通过
+                                              v{v.id} 再复核 · {vReport.modelDisplay || vReport.model} · {new Date(vReport.reviewedAt).toLocaleString()}
+                                              {isOracleFailed
+                                                ? <span className="ml-2 font-semibold">⊘ Opus 无法验证</span>
+                                                : <> · {vReport.passed}/{vReport.total} 通过</>}
                                             </span>
                                             <button onClick={() => setExpandedVariantReviewId(null)} className="text-gray-500 hover:underline">收起</button>
                                           </div>
-                                          {vReport.issues.length === 0 ? (
+                                          {isOracleFailed ? (
+                                            <div className="rounded border border-gray-200 bg-white p-2 text-xs text-gray-700">
+                                              <div className="mb-1 font-semibold">原因</div>
+                                              <div className="whitespace-pre-wrap break-words">{vReport.reason || "未知"}</div>
+                                            </div>
+                                          ) : vReport.issues.length === 0 ? (
                                             <div className="text-xs text-green-700">✓ 全部测试点通过再复核</div>
                                           ) : (
                                             <div className="space-y-2">
@@ -1546,7 +1602,8 @@ export default function AdminProblemsPage() {
                                           )}
                                         </td>
                                       </tr>
-                                    )}
+                                      );
+                                    })()}
                                     </Fragment>
                                     );
                                   })}
